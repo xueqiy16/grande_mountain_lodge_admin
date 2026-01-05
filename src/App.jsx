@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import Sidebar from './Sidebar';
 import './App.css';
-import Login from './Login';
 import WalkInModal from './WalkInModal';
 import PaymentModal from './PaymentModal';
 import CheckInModal from './CheckInModal';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 
 function App() {
