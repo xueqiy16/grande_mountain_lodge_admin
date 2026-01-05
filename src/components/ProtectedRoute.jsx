@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient'; // Adjust path to your supabase client
+import { supabase } from '../lib/supabase';
 
 const ProtectedRoute = ({ children }) => {
   const [loading, setLoading] = useState(true);
@@ -13,7 +13,7 @@ const ProtectedRoute = ({ children }) => {
       if (session) {
         setAuthenticated(true);
       } else {
-        navigate('/login'); // Redirect to your login path
+        navigate('/Login');
       }
       setLoading(false);
     };
@@ -22,7 +22,7 @@ const ProtectedRoute = ({ children }) => {
 
     // Optional: Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) navigate('/login');
+      if (!session) navigate('/Login');
     });
 
     return () => subscription.unsubscribe();
