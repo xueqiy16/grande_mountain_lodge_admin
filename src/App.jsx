@@ -7,7 +7,7 @@ import PaymentModal from './PaymentModal';
 import CheckInModal from './CheckInModal';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
+import Login from './Login';
 
 function App() {
   const [session, setSession] = useState(null);
