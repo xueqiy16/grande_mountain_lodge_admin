@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
 const Login = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -12,16 +12,26 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError(null);
     
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      // 1. Hit your new Vercel Serverless Function
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
 
-    if (error) {
-      setError(error.message);
+      const data = await response.json();
+
+      if (response.ok) {
+        // 2. Success! Pass a dummy session object to onLogin 
+        // to keep your existing App.js logic working.
+        onLogin({ user: { email: username }, access_token: 'manual-jwt' });
+      } else {
+        throw new Error(data.message || 'Invalid username or password');
+      }
+    } catch (err) {
+      setError(err.message);
       setLoading(false);
-    } else {
-      onLogin(data.session);
     }
   };
 
@@ -72,12 +82,12 @@ const Login = ({ onLogin }) => {
               color: '#64748b', 
               textTransform: 'uppercase',
               marginBottom: '8px' 
-            }}>Email</label>
+            }}>Username</label>
             <input 
-              type="email" 
-              placeholder="Enter your email"
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)}
+              type="text" 
+              placeholder="Enter your username"
+              value={username} 
+              onChange={(e) => setUsername(e.target.value)}
               style={{ 
                 width: '100%', 
                 padding: '12px 16px', 
