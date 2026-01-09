@@ -275,7 +275,6 @@ function App() {
     setSelectedRoom(null); fetchDashboardData();
   };
 
-  if (!session) return <Login onLogin={(s) => setSession(s)} />;
   if (loading) return <div className="loading-screen">Loading PMS...</div>;
 
 

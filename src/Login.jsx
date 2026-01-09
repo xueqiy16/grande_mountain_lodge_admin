@@ -13,24 +13,25 @@ const Login = ({ onLogin }) => {
     setError(null);
     
     try {
-      // 1. Hit your new Vercel Serverless Function
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+      // 1. Use Supabase Client to sign in directly
+      // This automatically handles session storage in LocalStorage
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: username, // Your 'username' field currently holds the email
+        password: password,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // 2. Success! Pass a dummy session object to onLogin 
-        // to keep your existing App.js logic working.
-        onLogin({ user: { email: username }, access_token: 'manual-jwt' });
-      } else {
-        throw new Error(data.message || 'Invalid username or password');
+      if (authError) {
+        throw authError;
       }
+
+      // 2. Success! Pass the data.session to your existing onLogin prop
+      // This ensures App.js (or your parent component) knows login was successful
+      if (data.session) {
+        onLogin(data.session);
+      }
+      
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Invalid email or password');
       setLoading(false);
     }
   };
