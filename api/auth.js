@@ -1,30 +1,37 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-// Use environment variables for these!
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-// This hash is for the password 'yourpassword'
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '$2a$08$92ZkDrGVS3W5ZJi.6m6.fOewE7G8ZivS0.fR1C5ZpP9Z3Z5Z3Z5Z3'; 
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Store users in a simple array for easy checking
+const USERS = [
+  { username: process.env.ADMIN_USERNAME_1, hash: process.env.ADMIN_PASSWORD_HASH_1 },
+  { username: process.env.ADMIN_USERNAME_2, hash: process.env.ADMIN_PASSWORD_HASH_2 }
+];
 
 export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { username, password } = req.body;
 
-    if (username !== ADMIN_USERNAME) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    // 1. Find the user in our list
+    const user = USERS.find(u => u.username === username);
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid username or password' });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+    // 2. Compare the password with the shredded "confetti" (hash)
+    const isPasswordValid = await bcrypt.compare(password, user.hash);
     if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid username or password' });
     }
 
-    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '1h' });
+    // 3. Create the wristband (token)
+    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '2h' });
 
-    // Set a cookie so the browser remembers the login
-    res.setHeader('Set-Cookie', `token=${token}; HttpOnly; Secure; Path=/; Max-Age=3600`);
-    return res.json({ message: 'Login successful' });
+    // 4. Set the "Unstealable" Cookie
+    res.setHeader('Set-Cookie', `token=${token}; HttpOnly; Secure; Path=/; Max-Age=7200; SameSite=Strict`);
+    return res.json({ message: 'Login successful', user: user.username });
   }
 
   return res.status(405).json({ message: 'Method not allowed' });
