@@ -36,12 +36,24 @@ function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchDashboardData();
+      if (session) {
+        fetchDashboardData();
+      } else {
+        setLoading(false);
+      }
+    }).catch(() => {
+      setLoading(false);
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchDashboardData();
+      if (session) {
+        fetchDashboardData();
+      } else {
+        setLoading(false);
+      }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
