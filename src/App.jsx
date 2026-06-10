@@ -314,7 +314,7 @@ function App() {
                   </div>
                   <div className="header-profile-container">
                     <div className="header-profile" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Zhu Ying</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Default User</div>
                       <div className="profile-avatar">Z</div>
                     </div>
                     {profileDropdownOpen && (
