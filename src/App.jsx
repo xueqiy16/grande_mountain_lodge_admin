@@ -14,6 +14,7 @@ function App() {
   const [rooms, setRooms] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [currentTab, setCurrentTab] = useState('In-House');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedFolioId, setSelectedFolioId] = useState(null);
@@ -34,13 +35,12 @@ function App() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session) {
-        fetchDashboardData();
-      } else {
-        setLoading(false);
+        await fetchDashboardData();
       }
+      setLoading(false);
     }).catch(() => {
       setLoading(false);
     });
@@ -49,8 +49,6 @@ function App() {
       setSession(session);
       if (session) {
         fetchDashboardData();
-      } else {
-        setLoading(false);
       }
     });
 
@@ -91,7 +89,7 @@ function App() {
   }, [currentTab]);
 
   const fetchDashboardData = async () => {
-    setLoading(true);
+    setDataLoading(true);
     const [roomsRes, bookingsRes, transactionsRes] = await Promise.all([
       supabase.from('rooms').select('*, room_types(*)').order('room_number', { ascending: true }),
       supabase.from('bookings').select('*, guests(*), rooms(*, room_types(*))'),
@@ -100,7 +98,7 @@ function App() {
     if (roomsRes.data) setRooms(roomsRes.data);
     if (bookingsRes.data) setBookings(bookingsRes.data);
     if (transactionsRes.data) setAllTransactions(transactionsRes.data);
-    setLoading(false);
+    setDataLoading(false);
   };
 
   const activeBooking = selectedRoom 
@@ -307,6 +305,7 @@ function App() {
                   <div className="header-brand">
                     <img src="/assets/logo.png" alt="Grande Mountain Lodge" className="header-logo" />
                     <h1>Grande Mountain Lodge</h1>
+                    {dataLoading && <span className="data-loading-indicator">Updating…</span>}
                   </div>
                   <div className="header-search-container">
                     <input type="text" placeholder="Search by Room # or Guest Name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />

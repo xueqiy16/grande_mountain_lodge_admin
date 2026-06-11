@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 
-const Login = ({ onLogin }) => {
+const Login = () => {
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -11,28 +13,20 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    
-    try {
-      // 1. Use Supabase Client to sign in directly
-      // This automatically handles session storage in LocalStorage
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: username, // Your 'username' field currently holds the email
-        password: password,
-      });
 
-      if (authError) {
-        throw authError;
-      }
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: username, // Your 'username' field currently holds the email
+      password: password,
+    });
 
-      // 2. Success! Pass the data.session to your existing onLogin prop
-      // This ensures App.js (or your parent component) knows login was successful
-      if (data.session) {
-        onLogin(data.session);
-      }
-      
-    } catch (err) {
-      setError(err.message || 'Invalid email or password');
+    if (authError) {
+      setError(authError.message || 'Invalid email or password');
       setLoading(false);
+      return;
+    }
+
+    if (data.session) {
+      navigate('/', { replace: true });
     }
   };
 

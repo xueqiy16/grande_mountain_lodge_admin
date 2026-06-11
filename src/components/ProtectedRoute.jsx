@@ -13,7 +13,7 @@ const ProtectedRoute = ({ children }) => {
       if (session) {
         setAuthenticated(true);
       } else {
-        navigate('/Login');
+        navigate('/login', { replace: true });
       }
       setLoading(false);
     };
@@ -22,7 +22,11 @@ const ProtectedRoute = ({ children }) => {
 
     // Optional: Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) navigate('/Login');
+      if (session) {
+        setAuthenticated(true);
+      } else {
+        navigate('/login', { replace: true });
+      }
     });
 
     return () => subscription.unsubscribe();

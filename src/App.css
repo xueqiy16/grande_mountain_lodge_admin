@@ -471,6 +471,18 @@ body {
   background: white;
 }
 
+.data-loading-indicator {
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--primary);
+  background: rgba(217, 119, 6, 0.12);
+  white-space: nowrap;
+}
+
 /* GUEST FOLIO STYLES */
 .folio-view {
   background: white;
