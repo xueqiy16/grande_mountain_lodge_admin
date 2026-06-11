@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => {
   const [roomTypes, setRoomTypes] = useState([]);
   const [selectedType, setSelectedType] = useState('');
+  const [roomError, setRoomError] = useState(false);
   const [formData, setFormData] = useState({
     first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
     check_in: new Date().toISOString().split('T')[0], // Default to today
@@ -18,14 +19,25 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       const { data } = await supabase.from('room_types').select('*');
       if (data) setRoomTypes(data);
     };
-    if (isOpen) fetchTypes();
+    if (isOpen) {
+      fetchTypes();
+      setRoomError(false);
+    }
   }, [isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const targetRoom = availableRooms.find(r => r.room_type_id === selectedType);
-    if (!targetRoom) return alert("No rooms available for this type!");
+    // Only "Available" rooms are passed in via availableRooms (filtered on rooms.status).
+    // Compare as strings: the <select> value is always a string, while rooms.room_type_id
+    // may be a number in Supabase, so a strict === would never match.
+    const targetRoom = availableRooms.find(
+      r => String(r.room_type_id) === String(selectedType)
+    );
+    if (!targetRoom) {
+      setRoomError(true);
+      return;
+    }
 
     const today = new Date().toISOString().split('T')[0];
     // LOGIC: If check_in is future, status is 'Reserved'. If today, 'Checked in'.
@@ -87,12 +99,24 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         <form onSubmit={handleSubmit} className="walkin-form">
           <div className="form-section" style={{ marginBottom: '20px' }}>
             <label>1. Select Room Category</label>
-            <select required value={selectedType} onChange={(e) => setSelectedType(e.target.value)}>
+            <select
+              required
+              value={selectedType}
+              onChange={(e) => { setSelectedType(e.target.value); setRoomError(false); }}
+              className={roomError ? 'input-error' : ''}
+              aria-invalid={roomError}
+              aria-describedby={roomError ? 'room-category-error' : undefined}
+            >
               <option value="">Select Room Type...</option>
               {roomTypes.map(t => (
                 <option key={t.room_type_id} value={t.room_type_id}>{t.name} (${t.nightly_rate})</option>
               ))}
             </select>
+            {roomError && (
+              <p id="room-category-error" className="field-error-text">
+                No rooms available for this room category.
+              </p>
+            )}
           </div>
 
           {/* Identity Group */}

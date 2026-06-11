@@ -440,6 +440,23 @@ body {
 .walkin-form label { display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
 .walkin-form input, .walkin-form select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; }
 
+/* Material-style inline validation error */
+.walkin-form select.input-error,
+.walkin-form input.input-error {
+  border-color: #d32f2f;
+  outline-color: #d32f2f;
+  box-shadow: 0 0 0 1px #d32f2f;
+}
+
+.field-error-text {
+  margin: 6px 0 0;
+  color: #d32f2f;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
 .form-section-title { margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.9rem; color: var(--primary); }
 
 /* Toast Notifications */
