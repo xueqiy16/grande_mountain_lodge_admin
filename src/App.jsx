@@ -19,6 +19,12 @@ function App() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedFolioId, setSelectedFolioId] = useState(null);
   const activeFolio = bookings.find(b => b.booking_id === selectedFolioId);
+  const profileNameByEmail = {
+    'reception@grandemountainlodge.com': 'Front Desk',
+    'zypeny@gmail.com': 'Ying Zhu',
+  };
+  const displayName = profileNameByEmail[session?.user?.email] || 'Lodge User';
+  const avatarInitial = displayName.charAt(0).toUpperCase();
   const [searchTerm, setSearchTerm] = useState('');
   const [isWalkInOpen, setIsWalkInOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -313,8 +319,8 @@ function App() {
                   </div>
                   <div className="header-profile-container">
                     <div className="header-profile" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Default User</div>
-                      <div className="profile-avatar">Z</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{displayName}</div>
+                      <div className="profile-avatar">{avatarInitial}</div>
                     </div>
                     {profileDropdownOpen && (
                       <div className="profile-dropdown">
