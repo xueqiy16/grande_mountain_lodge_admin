@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 
 const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => {
   const [roomTypes, setRoomTypes] = useState([]);
+  const [allRooms, setAllRooms] = useState([]);
   const [selectedType, setSelectedType] = useState('');
   const [roomError, setRoomError] = useState(false);
   const [formData, setFormData] = useState({
@@ -15,24 +16,42 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   const isCashOrDebit = formData.card_brand === 'Cash' || formData.card_brand === 'Debit';
 
   useEffect(() => {
-    const fetchTypes = async () => {
-      const { data } = await supabase.from('room_types').select('*');
-      if (data) setRoomTypes(data);
+    const fetchData = async () => {
+      const [typesRes, roomsRes] = await Promise.all([
+        supabase.from('room_types').select('*'),
+        supabase.from('rooms').select('*'),
+      ]);
+      if (typesRes.data) setRoomTypes(typesRes.data);
+      if (roomsRes.data) setAllRooms(roomsRes.data);
     };
     if (isOpen) {
-      fetchTypes();
+      fetchData();
       setRoomError(false);
     }
   }, [isOpen]);
 
+  // Normalize any status string ("Available", " available ", etc.) for comparison.
+  const isRoomAvailable = (room) =>
+    (room?.status ?? '').toString().toLowerCase().trim() === 'available';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Only "Available" rooms are passed in via availableRooms (filtered on rooms.status).
-    // Compare as strings: the <select> value is always a string, while rooms.room_type_id
-    // may be a number in Supabase, so a strict === would never match.
-    const targetRoom = availableRooms.find(
-      r => String(r.room_type_id) === String(selectedType)
+    // The <select> value is always a string. Trim it defensively in case any
+    // label text or whitespace leaks into the value.
+    const sanitizedValue = String(selectedType).trim();
+
+    // --- Diagnostics: inspect exactly what we're matching against ---
+    console.log("Selected Category Value:", sanitizedValue);
+    console.log("Sample Room Object from Array:", allRooms[0]);
+    console.log("Sample Room Type Object:", roomTypes[0]);
+    console.log("Rooms loaded / available:", allRooms.length, allRooms.filter(isRoomAvailable).length);
+
+    // Match on the relational id, normalized to strings on BOTH sides so a numeric
+    // room_type_id in Supabase still matches the string coming from the dropdown.
+    // Availability is read straight from the DB (rooms.status), case/space-insensitive.
+    const targetRoom = allRooms.find(
+      r => String(r.room_type_id).trim() === sanitizedValue && isRoomAvailable(r)
     );
     if (!targetRoom) {
       setRoomError(true);
