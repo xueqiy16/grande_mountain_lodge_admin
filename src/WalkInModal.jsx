@@ -41,12 +41,6 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     // label text or whitespace leaks into the value.
     const sanitizedValue = String(selectedType).trim();
 
-    // --- Diagnostics: inspect exactly what we're matching against ---
-    console.log("Selected Category Value:", sanitizedValue);
-    console.log("Sample Room Object from Array:", allRooms[0]);
-    console.log("Sample Room Type Object:", roomTypes[0]);
-    console.log("Rooms loaded / available:", allRooms.length, allRooms.filter(isRoomAvailable).length);
-
     // Match on the relational id, normalized to strings on BOTH sides so a numeric
     // room_type_id in Supabase still matches the string coming from the dropdown.
     // Availability is read straight from the DB (rooms.status), case/space-insensitive.
@@ -75,10 +69,26 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
     if (guestError) return alert("Guest Error: " + guestError.message);
 
+    // Generate clean UUID + reference codes to map to the exact bookings schema.
+    // Codes use a 6-char alphanumeric pool (A-Z, 0-9) => 36^6 ≈ 2.1B combinations.
+    const generateCode = (prefix) => {
+      const pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let suffix = '';
+      for (let i = 0; i < 6; i++) {
+        suffix += pool.charAt(Math.floor(Math.random() * pool.length));
+      }
+      return `${prefix}-${suffix}`;
+    };
+
+    const bookingId = crypto.randomUUID();
+    const bookingReference = generateCode('BK');
+    const monerisToken = generateCode('RES');
+
     // 2. Create Booking
     const { error: bookingError } = await supabase
       .from('bookings')
       .insert([{
+        booking_id: bookingId,
         guest_id: guestData.guest_id,
         room_id: targetRoom.room_id,
         check_in: formData.check_in,
@@ -87,11 +97,12 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         children: formData.children,
         pets: formData.pets,
         booking_status: finalStatus,
-        token: `RES-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        booking_reference: bookingReference,
+        moneris_token: monerisToken,
         card_brand: formData.card_brand,
-        last4: isCashOrDebit ? null : formData.last4,
-        expiry_month: isCashOrDebit ? null : parseInt(formData.expiry_month) || null,
-        expiry_year: isCashOrDebit ? null : parseInt(formData.expiry_year) || null
+        card_last4: isCashOrDebit ? null : formData.last4,
+        card_exp_month: isCashOrDebit ? null : parseInt(formData.expiry_month) || null,
+        card_exp_year: isCashOrDebit ? null : parseInt(formData.expiry_year) || null
       }]);
 
     if (bookingError) return alert("Booking Error: " + bookingError.message);
