@@ -109,15 +109,8 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         throw bookingError;
       }
 
-      // Update room status to 'occupied'
-      const { error: roomError } = await supabase
-        .from('rooms')
-        .update({ status: 'occupied' })
-        .eq('room_id', booking.room_id);
-
-      if (roomError) {
-        throw roomError;
-      }
+      // Room status -> 'occupied' is handled by the DB trigger tr_update_room_status
+      // off the booking_status change; no client-side rooms update needed.
 
       // Success
       onCheckInComplete(`Checked in successfully.`);

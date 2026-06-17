@@ -251,8 +251,8 @@ function App() {
     // If this was a check-in flow, complete the check-in process
     if (paymentModalContext === 'checkin' && selectedPaymentBooking) {
       try {
+        // Room -> 'occupied' is synced by the DB trigger off booking_status.
         await supabase.from('bookings').update({ booking_status: 'checked-in' }).eq('booking_id', selectedPaymentBooking.booking_id);
-        await supabase.from('rooms').update({ status: 'occupied' }).eq('room_id', selectedPaymentBooking.room_id);
         setMessage(`Checked in successfully. ${msg}`);
       } catch (error) {
         alert("Check-in failed: " + error.message);
@@ -290,8 +290,8 @@ function App() {
       return;
     }
     try {
+      // Room -> 'house-keeping' is synced by the DB trigger off this booking_status change.
       await supabase.from('bookings').update({ booking_status: 'checked-out' }).eq('booking_id', bookingToProcess.booking_id);
-      await supabase.from('rooms').update({ status: 'house-keeping' }).eq('room_id', bookingToProcess.room_id);
       setMessage(`Check-out complete.`);
       setSelectedRoom(null); fetchDashboardData(); 
     } catch (error) { alert("Check-out failed."); }
@@ -300,12 +300,8 @@ function App() {
   const handleCancelReservation = async (bookingId) => {
     if (!bookingId) return;
     if (!window.confirm("Cancel this reservation?")) return;
-    const booking = bookings.find(b => b.booking_id === bookingId);
-    if (booking?.room_id) {
-      // Free the room back up for the front desk.
-      await supabase.from('rooms').update({ status: 'available' }).eq('room_id', booking.room_id);
-    }
     // Soft cancel: preserve the row for the audit trail instead of deleting.
+    // The DB trigger frees the room back to 'available' off this booking_status change.
     await supabase
       .from('bookings')
       .update({ booking_status: 'cancelled', cancelled_at: new Date().toISOString() })
@@ -317,12 +313,8 @@ function App() {
   const handleMarkNoShow = async (bookingId) => {
     if (!bookingId) return;
     if (!window.confirm("Mark this reservation as a no-show?")) return;
-    const booking = bookings.find(b => b.booking_id === bookingId);
-    if (booking?.room_id) {
-      // Free the room back up for the front desk.
-      await supabase.from('rooms').update({ status: 'available' }).eq('room_id', booking.room_id);
-    }
     // Soft state change: preserve the row, flag the guest never arrived.
+    // The DB trigger frees the room back to 'available' off this booking_status change.
     await supabase
       .from('bookings')
       .update({ booking_status: 'no_show' })
