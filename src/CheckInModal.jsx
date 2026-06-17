@@ -13,11 +13,13 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [etransferError, setEtransferError] = useState(false);
   const [formData, setFormData] = useState({
-    card_brand: 'Visa',
+    card_brand: '',
     last4: '',
     expiry_month: '',
     expiry_year: '',
+    etransfer_reference: '',
     initial_balance: '0.00'
   });
 
@@ -36,28 +38,46 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   useEffect(() => {
     if (!isOpen) {
       setFormData({
-        card_brand: 'Visa',
+        card_brand: '',
         last4: '',
         expiry_month: '',
         expiry_year: '',
+        etransfer_reference: '',
         initial_balance: '0.00'
       });
       setIsProcessing(false);
+      setEtransferError(false);
     }
   }, [isOpen]);
+
+  // Card metadata only applies to real credit cards (not Cash/Debit/E-transfer).
+  const isEtransfer = formData.card_brand === 'E-transfer';
+  const requiresCardDetails =
+    formData.card_brand !== '' &&
+    formData.card_brand !== 'Cash' &&
+    formData.card_brand !== 'Debit' &&
+    !isEtransfer;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!booking) return;
 
-    if (!formData.last4 || formData.last4.length !== 4) {
-      alert("Please enter the last 4 digits of the card.");
-      return;
+    if (requiresCardDetails) {
+      if (!formData.last4 || formData.last4.length !== 4) {
+        alert("Please enter the last 4 digits of the card.");
+        return;
+      }
+
+      if (!formData.expiry_month || !formData.expiry_year) {
+        alert("Please enter the card expiry date.");
+        return;
+      }
     }
 
-    if (!formData.expiry_month || !formData.expiry_year) {
-      alert("Please enter the card expiry date.");
+    // Strict validation: E-transfer requires a reference number.
+    if (isEtransfer && !formData.etransfer_reference.trim()) {
+      setEtransferError(true);
       return;
     }
 
@@ -75,9 +95,11 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         .from('bookings')
         .update({
           card_brand: formData.card_brand,
-          card_last4: formData.last4,
-          card_exp_month: parseInt(formData.expiry_month),
-          card_exp_year: parseInt(formData.expiry_year),
+          last4: requiresCardDetails ? formData.last4 : null,
+          expiry_month: requiresCardDetails ? parseInt(formData.expiry_month) : null,
+          expiry_year: requiresCardDetails ? parseInt(formData.expiry_year) : null,
+          // E-transfer reference is stored in bookings.payment_notes; null otherwise.
+          payment_notes: isEtransfer ? formData.etransfer_reference.trim() : null,
           amount_paid: 0, // Reset to 0, initial balance will be outstanding
           booking_status: 'Checked in'
         })
@@ -182,65 +204,101 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             </>
           )}
 
-          <div className="form-section-title">Card Information</div>
+          <div className="form-section-title">{requiresCardDetails ? 'Card Information' : 'Payment Method'}</div>
           
-          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+          <div className="form-grid-3" style={{ gridTemplateColumns: requiresCardDetails ? '1fr 1fr 1fr' : '1fr' }}>
             <div className="form-group">
               <label>Card Brand *</label>
               <select 
                 required
                 value={formData.card_brand}
-                onChange={(e) => setFormData({...formData, card_brand: e.target.value})}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const clearsCard = value !== 'Visa' && value !== 'Mastercard' && value !== 'Amex';
+                  const clearsEtransfer = value !== 'E-transfer';
+                  setEtransferError(false);
+                  setFormData({
+                    ...formData,
+                    card_brand: value,
+                    ...(clearsCard ? { last4: '', expiry_month: '', expiry_year: '' } : {}),
+                    ...(clearsEtransfer ? { etransfer_reference: '' } : {})
+                  });
+                }}
                 disabled={isProcessing}
               >
+                <option value="">Select payment method...</option>
                 <option value="Visa">Visa</option>
                 <option value="Mastercard">Mastercard</option>
                 <option value="Amex">Amex</option>
-                <option value="Interac">Interac</option>
+                <option value="Debit">Debit</option>
                 <option value="Cash">Cash</option>
+                <option value="E-transfer">E-transfer</option>
               </select>
             </div>
-            <div className="form-group">
-              <label>Last 4 Digits *</label>
-              <input 
-                type="text"
-                maxLength="4"
-                required
-                value={formData.last4}
-                onChange={(e) => setFormData({...formData, last4: e.target.value.replace(/\D/g, '')})}
-                disabled={isProcessing}
-                placeholder="1234"
-              />
-            </div>
-            <div className="form-group">
-              <label>Expiry Month *</label>
-              <input 
-                type="number"
-                min="1"
-                max="12"
-                required
-                value={formData.expiry_month}
-                onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
-                disabled={isProcessing}
-                placeholder="MM"
-              />
-            </div>
+            {isEtransfer && (
+              <div className="form-group">
+                <label>E-transfer Reference Number *</label>
+                <input
+                  type="text"
+                  value={formData.etransfer_reference}
+                  onChange={(e) => { setFormData({...formData, etransfer_reference: e.target.value}); setEtransferError(false); }}
+                  className={etransferError ? 'input-error' : ''}
+                  aria-invalid={etransferError}
+                  disabled={isProcessing}
+                  placeholder="e.g. ETR-123456"
+                />
+                {etransferError && (
+                  <p className="field-error-text">E-transfer reference number is required.</p>
+                )}
+              </div>
+            )}
+            {requiresCardDetails && (
+              <>
+                <div className="form-group">
+                  <label>Last 4 Digits *</label>
+                  <input 
+                    type="text"
+                    maxLength="4"
+                    required
+                    value={formData.last4}
+                    onChange={(e) => setFormData({...formData, last4: e.target.value.replace(/\D/g, '')})}
+                    disabled={isProcessing}
+                    placeholder="1234"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Expiry Month *</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    max="12"
+                    required
+                    value={formData.expiry_month}
+                    onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
+                    disabled={isProcessing}
+                    placeholder="MM"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 2fr' }}>
-            <div className="form-group">
-              <label>Expiry Year *</label>
-              <input 
-                type="number"
-                min="2024"
-                required
-                value={formData.expiry_year}
-                onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
-                disabled={isProcessing}
-                placeholder="YYYY"
-              />
+          {requiresCardDetails && (
+            <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 2fr' }}>
+              <div className="form-group">
+                <label>Expiry Year *</label>
+                <input 
+                  type="number"
+                  min="2024"
+                  required
+                  value={formData.expiry_year}
+                  onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
+                  disabled={isProcessing}
+                  placeholder="YYYY"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <button 
             type="submit" 

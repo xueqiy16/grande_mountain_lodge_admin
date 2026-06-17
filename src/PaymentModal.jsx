@@ -21,9 +21,10 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [etransferError, setEtransferError] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
-    payment_method: 'Visa',
+    payment_method: '',
     transaction_type: 'Payment',
     auth_code: '',
     reference_number: ''
@@ -46,14 +47,23 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
     if (!isOpen) {
       setFormData({
         amount: '',
-        payment_method: 'Visa',
+        payment_method: '',
         transaction_type: 'Payment',
         auth_code: '',
         reference_number: ''
       });
       setIsProcessing(false);
+      setEtransferError(false);
     }
   }, [isOpen]);
+
+  // Terminal/card confirmation fields only apply to card transactions (not Cash/Debit/E-transfer).
+  const isEtransfer = formData.payment_method === 'E-transfer';
+  const requiresCardDetails =
+    formData.payment_method !== '' &&
+    formData.payment_method !== 'Cash' &&
+    formData.payment_method !== 'Debit' &&
+    !isEtransfer;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -67,6 +77,31 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
       return;
     }
 
+    // Strict validation: E-transfer requires a reference number.
+    if (isEtransfer && !formData.reference_number.trim()) {
+      setEtransferError(true);
+      return;
+    }
+
+    // Standard alphanumeric code (A-Z, 0-9) for card transactions.
+    const generateCode = (prefix) => {
+      const pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let suffix = '';
+      for (let i = 0; i < 6; i++) {
+        suffix += pool.charAt(Math.floor(Math.random() * pool.length));
+      }
+      return `${prefix}-${suffix}`;
+    };
+
+    // transaction_reference: E-transfer uses the entered code; cards require it or
+    // auto-generate a standard code; Cash/Debit carry no reference.
+    let transactionReference = null;
+    if (isEtransfer) {
+      transactionReference = formData.reference_number.trim();
+    } else if (requiresCardDetails) {
+      transactionReference = formData.reference_number.trim() || generateCode('TXN');
+    }
+
     setIsProcessing(true);
 
     try {
@@ -78,8 +113,8 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
           amount: amount,
           payment_method: formData.payment_method,
           transaction_type: formData.transaction_type,
-          auth_code: formData.auth_code || null,
-          reference_number: formData.reference_number || null
+          auth_code: requiresCardDetails ? (formData.auth_code || null) : null,
+          transaction_reference: transactionReference
         }]);
 
       if (transactionError) {
@@ -180,14 +215,26 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
               <select 
                 required
                 value={formData.payment_method}
-                onChange={(e) => setFormData({...formData, payment_method: e.target.value})}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // auth_code/reference_number are context-specific; clear on every switch.
+                  setEtransferError(false);
+                  setFormData({
+                    ...formData,
+                    payment_method: value,
+                    auth_code: '',
+                    reference_number: ''
+                  });
+                }}
                 disabled={isProcessing}
               >
+                <option value="">Select payment method...</option>
                 <option value="Visa">Visa</option>
                 <option value="Mastercard">Mastercard</option>
                 <option value="Amex">Amex</option>
-                <option value="Interac">Interac</option>
+                <option value="Debit">Debit</option>
                 <option value="Cash">Cash</option>
+                <option value="E-transfer">E-transfer</option>
               </select>
             </div>
           </div>
@@ -207,30 +254,54 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
             </div>
           </div>
 
-          <div className="form-section-title" style={{ marginTop: '20px' }}>Terminal Confirmation</div>
-          
-          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="form-group">
-              <label>Auth Code</label>
-              <input 
-                type="text"
-                value={formData.auth_code}
-                onChange={(e) => setFormData({...formData, auth_code: e.target.value})}
-                disabled={isProcessing}
-                placeholder="Optional"
-              />
+          {isEtransfer && (
+            <div className="form-grid-3" style={{ gridTemplateColumns: '1fr' }}>
+              <div className="form-group">
+                <label>E-transfer Reference Number *</label>
+                <input
+                  type="text"
+                  value={formData.reference_number}
+                  onChange={(e) => { setFormData({...formData, reference_number: e.target.value}); setEtransferError(false); }}
+                  className={etransferError ? 'input-error' : ''}
+                  aria-invalid={etransferError}
+                  disabled={isProcessing}
+                  placeholder="e.g. ETR-123456"
+                />
+                {etransferError && (
+                  <p className="field-error-text">E-transfer reference number is required.</p>
+                )}
+              </div>
             </div>
-            <div className="form-group">
-              <label>Reference Number</label>
-              <input 
-                type="text"
-                value={formData.reference_number}
-                onChange={(e) => setFormData({...formData, reference_number: e.target.value})}
-                disabled={isProcessing}
-                placeholder="Optional"
-              />
-            </div>
-          </div>
+          )}
+
+          {requiresCardDetails && (
+            <>
+              <div className="form-section-title" style={{ marginTop: '20px' }}>Terminal Confirmation</div>
+
+              <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <div className="form-group">
+                  <label>Auth Code</label>
+                  <input 
+                    type="text"
+                    value={formData.auth_code}
+                    onChange={(e) => setFormData({...formData, auth_code: e.target.value})}
+                    disabled={isProcessing}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Reference Number</label>
+                  <input 
+                    type="text"
+                    value={formData.reference_number}
+                    onChange={(e) => setFormData({...formData, reference_number: e.target.value})}
+                    disabled={isProcessing}
+                    placeholder="Optional"
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <button 
             type="submit" 
