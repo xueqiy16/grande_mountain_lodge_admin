@@ -110,15 +110,35 @@ function App() {
   const activeBooking = selectedRoom 
     ? bookings.find(b => 
         b.room_id === selectedRoom.room_id && 
-        (b.booking_status === 'Checked in' || b.booking_status === 'Reserved')
+        (b.booking_status === 'checked-in' || b.booking_status === 'confirmed')
       ) 
     : null;
 
-  // Primary Status Helper - determines the single primary status for a room
+  // Maps booking_status_type enum values to human-readable labels for display.
+  const formatBookingStatus = (status) => {
+    const labels = {
+      'pending': 'Pending',
+      'booked': 'Booked',
+      'confirmed': 'Confirmed',
+      'checked-in': 'Checked In',
+      'checked-out': 'Checked Out',
+      'cancelled': 'Cancelled',
+      'no_show': 'No Show',
+    };
+    return labels[status] || status;
+  };
+
+  // Primary Status Helper - determines the single primary status for a room.
+  // NOTE: compares DB enum values, but RETURNS UI labels (Occupied/Reserved/...).
   const getPrimaryStatus = (room, bookings) => {
-    const activeB = bookings.find(b => b.room_id === room.room_id);
-    if (activeB?.booking_status === 'Checked in') return 'Occupied';
-    if (activeB?.booking_status === 'Reserved') return 'Reserved';
+    // Only active bookings drive room status; cancelled/no_show/checked-out are ignored
+    // so the room frees up and shows as Available again.
+    const activeB = bookings.find(b =>
+      b.room_id === room.room_id &&
+      (b.booking_status === 'checked-in' || b.booking_status === 'confirmed')
+    );
+    if (activeB?.booking_status === 'checked-in') return 'Occupied';
+    if (activeB?.booking_status === 'confirmed') return 'Reserved';
     if (room.status === 'Dirty') return 'Dirty';
     return 'Available';
   };
@@ -225,7 +245,7 @@ function App() {
     // If this was a check-in flow, complete the check-in process
     if (paymentModalContext === 'checkin' && selectedPaymentBooking) {
       try {
-        await supabase.from('bookings').update({ booking_status: 'Checked in' }).eq('booking_id', selectedPaymentBooking.booking_id);
+        await supabase.from('bookings').update({ booking_status: 'checked-in' }).eq('booking_id', selectedPaymentBooking.booking_id);
         await supabase.from('rooms').update({ status: 'Occupied' }).eq('room_id', selectedPaymentBooking.room_id);
         setMessage(`Checked in successfully. ${msg}`);
       } catch (error) {
@@ -264,7 +284,7 @@ function App() {
       return;
     }
     try {
-      await supabase.from('bookings').update({ booking_status: 'Checked out' }).eq('booking_id', bookingToProcess.booking_id);
+      await supabase.from('bookings').update({ booking_status: 'checked-out' }).eq('booking_id', bookingToProcess.booking_id);
       await supabase.from('rooms').update({ status: 'Dirty' }).eq('room_id', bookingToProcess.room_id);
       setMessage(`Check-out complete.`);
       setSelectedRoom(null); fetchDashboardData(); 
@@ -272,15 +292,36 @@ function App() {
   };
 
   const handleCancelReservation = async (bookingId) => {
+    if (!bookingId) return;
     if (!window.confirm("Cancel this reservation?")) return;
     const booking = bookings.find(b => b.booking_id === bookingId);
     if (booking?.room_id) {
-      // Update room status back to Available
+      // Free the room back up for the front desk.
       await supabase.from('rooms').update({ status: 'Available' }).eq('room_id', booking.room_id);
     }
-    // Delete the booking (or set status to Cancelled)
-    await supabase.from('bookings').delete().eq('booking_id', bookingId);
+    // Soft cancel: preserve the row for the audit trail instead of deleting.
+    await supabase
+      .from('bookings')
+      .update({ booking_status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('booking_id', bookingId);
     setMessage("Reservation cancelled.");
+    setSelectedRoom(null); fetchDashboardData();
+  };
+
+  const handleMarkNoShow = async (bookingId) => {
+    if (!bookingId) return;
+    if (!window.confirm("Mark this reservation as a no-show?")) return;
+    const booking = bookings.find(b => b.booking_id === bookingId);
+    if (booking?.room_id) {
+      // Free the room back up for the front desk.
+      await supabase.from('rooms').update({ status: 'Available' }).eq('room_id', booking.room_id);
+    }
+    // Soft state change: preserve the row, flag the guest never arrived.
+    await supabase
+      .from('bookings')
+      .update({ booking_status: 'no_show' })
+      .eq('booking_id', bookingId);
+    setMessage("Reservation marked as no-show.");
     setSelectedRoom(null); fetchDashboardData();
   };
 
@@ -431,7 +472,7 @@ function App() {
                           <div className="stat-pill">
                             Total Stay Revenue (In-House): <span style={{color: '#22c55e'}}>$
                               {Number(bookings
-                                .filter(b => b.booking_status === 'Checked in')
+                                .filter(b => b.booking_status === 'checked-in')
                                 .reduce((acc, b) => acc + Number(calculateTotalBalance(b)), 0)).toFixed(2)}
                             </span>
                           </div>
@@ -454,7 +495,7 @@ function App() {
                         {(() => {
                           const today = new Date().toISOString().split('T')[0];
                           const pendingCheckouts = bookings.filter(b => 
-                            normalizeDate(b.check_out) === today && b.booking_status === 'Checked in'
+                            normalizeDate(b.check_out) === today && b.booking_status === 'checked-in'
                           );
                           return pendingCheckouts.length > 0 ? (
                             <table className="pms-table">
@@ -491,7 +532,7 @@ function App() {
                         {(() => {
                           const today = new Date().toISOString().split('T')[0];
                           const noShows = bookings.filter(b => 
-                            normalizeDate(b.check_in) === today && b.booking_status === 'Reserved'
+                            normalizeDate(b.check_in) === today && b.booking_status === 'confirmed'
                           );
                           return noShows.length > 0 ? (
                             <table className="pms-table">
@@ -501,6 +542,7 @@ function App() {
                                   <th>Room</th>
                                   <th>Stay Dates</th>
                                   <th>Status</th>
+                                  <th>Action</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -510,6 +552,11 @@ function App() {
                                     <td>{booking.rooms?.room_number}</td>
                                     <td>{booking.check_in} to {booking.check_out}</td>
                                     <td><span className="status-badge status-reserved">Reserved</span></td>
+                                    <td>
+                                      <button onClick={() => handleMarkNoShow(booking.booking_id)} className="tool-btn">
+                                        Mark as No-Show
+                                      </button>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -548,7 +595,7 @@ function App() {
                               <td className="folio-number">#FL-{b.booking_id.toString().slice(-5)}</td>
                               <td><strong>{b.guests?.first_name} {b.guests?.last_name}</strong></td>
                               <td>{b.rooms?.room_number}</td>
-                              <td><span className={`status-badge status-${b.booking_status.toLowerCase().replace(' ', '-')}`}>{b.booking_status}</span></td>
+                              <td><span className={`status-badge status-${b.booking_status}`}>{formatBookingStatus(b.booking_status)}</span></td>
                               <td className={`balance-cell ${parseFloat(calculateOutstandingBalance(b)) > 0 ? 'unpaid' : 'paid'}`}>
                                 ${Number(calculateOutstandingBalance(b)).toFixed(2)}
                               </td>
@@ -578,6 +625,13 @@ function App() {
                             Cancel Reservation
                           </button>
                           <button 
+                            onClick={() => handleMarkNoShow(activeBooking?.booking_id)} 
+                            className="tool-btn"
+                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
+                          >
+                            Mark as No-Show
+                          </button>
+                          <button 
                             onClick={handleMarkClean} 
                             className="tool-btn"
                             disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Dirty'}
@@ -599,14 +653,22 @@ function App() {
                         </div>
                       )}
 
-                      {/* Toolbar for Reserved tab - only Cancel Reservation button */}
+                      {/* Toolbar for Reserved tab - Cancel Reservation + Mark as No-Show */}
                       {currentTab === 'Reserved' && (
                         <div className="toolbar" style={{ marginTop: '10px' }}>
                           <button 
                             onClick={() => handleCancelReservation(activeBooking?.booking_id)} 
                             className="tool-btn"
+                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
                           >
                             Cancel Reservation
+                          </button>
+                          <button 
+                            onClick={() => handleMarkNoShow(activeBooking?.booking_id)} 
+                            className="tool-btn"
+                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
+                          >
+                            Mark as No-Show
                           </button>
                         </div>
                       )}
@@ -628,11 +690,11 @@ function App() {
                       {currentTab === 'Check-In' && (
                         <div className="arrivals-container">
                           <div className="view-header"><h2>Expected Check-Ins</h2><div className="date-selector"><label>DATE</label><input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} /></div></div>
-                          {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'Reserved').length > 0 ? (
+                          {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').length > 0 ? (
                             <table className="pms-table">
                               <thead><tr><th>Guest Name</th><th>Room</th><th>Stay Dates</th><th>Outstanding</th><th>Action</th></tr></thead>
                               <tbody>
-                                {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'Reserved').map(booking => (
+                                {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').map(booking => (
                                   <tr key={booking.booking_id}>
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>{booking.rooms?.room_number}</td>
@@ -652,11 +714,11 @@ function App() {
                       {currentTab === 'Check-Out' && (
                         <div className="arrivals-container">
                           <div className="view-header"><h2>Expected Check-Outs</h2><div className="date-selector"><label>DATE</label><input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div></div>
-                          {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'Checked in').length > 0 ? (
+                          {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked-in').length > 0 ? (
                             <table className="pms-table">
                               <thead><tr><th>Guest Name</th><th>Room</th><th>Stay Dates</th><th>Outstanding</th><th>Late Fee</th><th>Action</th></tr></thead>
                               <tbody>
-                                {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'Checked in').map(booking => (
+                                {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked-in').map(booking => (
                                   <tr key={booking.booking_id}>
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>{booking.rooms?.room_number}</td>
@@ -728,7 +790,7 @@ function App() {
                             const roomMatch = room.room_number.toString().includes(searchTerm);
                             return primaryStatus === 'Reserved' && (roomMatch || nameMatch);
                           }).map(room => {
-                            const reservation = bookings.find(b => b.room_id === room.room_id && b.booking_status === 'Reserved');
+                            const reservation = bookings.find(b => b.room_id === room.room_id && b.booking_status === 'confirmed');
                             return (
                               <div key={room.room_id} className={`room-card ${selectedRoom?.room_id === room.room_id ? 'selected' : ''}`} onClick={() => setSelectedRoom(room)}>
                                 <div className="room-header"><span className="room-number">{room.room_number}</span><span className="status-badge status-reserved">Reserved</span></div>

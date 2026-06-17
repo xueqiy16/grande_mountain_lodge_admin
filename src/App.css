@@ -687,6 +687,11 @@ body {
 /* Status Badge mapping - legacy, using main status classes above */
 .status-checked-in { background: #dbeafe; color: #1e40af; }
 .status-checked-out { background: #f1f5f9; color: #475569; }
+.status-confirmed { background: #fdf4ff; color: #701a75; border: 1px solid #fae8ff; }
+.status-booked { background: #fdf4ff; color: #701a75; border: 1px solid #fae8ff; }
+.status-pending { background: #fffbeb; color: #d97706; }
+.status-cancelled { background: #fef2f2; color: #b91c1c; }
+.status-no_show { background: #fef2f2; color: #b91c1c; }
 
 /* PMS Stats */
 .pms-stats {

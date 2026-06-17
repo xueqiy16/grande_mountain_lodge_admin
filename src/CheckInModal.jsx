@@ -90,7 +90,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     setIsProcessing(true);
 
     try {
-      // Update booking with card info, initial balance, and change status to 'Checked in'
+      // Update booking with card info, initial balance, and change status to 'checked-in'
       const { error: bookingError } = await supabase
         .from('bookings')
         .update({
@@ -101,7 +101,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           // E-transfer reference is stored in bookings.payment_notes; null otherwise.
           payment_notes: isEtransfer ? formData.etransfer_reference.trim() : null,
           amount_paid: 0, // Reset to 0, initial balance will be outstanding
-          booking_status: 'Checked in'
+          booking_status: 'checked-in'
         })
         .eq('booking_id', booking.booking_id);
 

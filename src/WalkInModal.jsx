@@ -85,9 +85,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     }
 
     const today = new Date().toISOString().split('T')[0];
-    // LOGIC: If check_in is future, status is 'Reserved'. If today, 'Checked in'.
+    // LOGIC: future check-in => 'confirmed' reservation; today => 'checked-in'.
+    // Values must match the booking_status_type enum exactly (lowercase/hyphenated).
     const isFutureBooking = formData.check_in > today;
-    const finalStatus = isFutureBooking ? 'Reserved' : 'Checked in';
+    const finalStatus = isFutureBooking ? 'confirmed' : 'checked-in';
 
     // 1. Create Guest
     const { data: guestData, error: guestError } = await supabase
