@@ -166,10 +166,11 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
     if (bookingError) return alert("Booking Error: " + bookingError.message);
 
-    // 3. Update Room Status ONLY if checking in today
-    if (!isFutureBooking) {
-      await supabase.from('rooms').update({ status: 'Occupied' }).eq('room_id', targetRoom.room_id);
-    }
+    // 3. Update Room Status: occupied when checking in today, reserved for a future stay.
+    await supabase
+      .from('rooms')
+      .update({ status: isFutureBooking ? 'reserved' : 'occupied' })
+      .eq('room_id', targetRoom.room_id);
 
     onBookingComplete(isFutureBooking ? `Reservation created for Room ${targetRoom.room_number}` : `Checked into Room ${targetRoom.room_number}!`);
     handleClose();

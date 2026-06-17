@@ -295,7 +295,33 @@ body {
 .status-occupied { background: #eff6ff; color: #2563eb; }
 .status-reserved { background: #fdf4ff; color: #701a75; border: 1px solid #fae8ff; }
 .status-dirty { background: #fffbeb; color: #d97706; }
-.status-out-of-service { background: #fef2f2; color: #dc2626; }
+.status-out-of-service { background: #dc2626; color: #ffffff; }
+
+/* Out-of-service rooms: locked, industrial grey block that reads clearly as unsellable. */
+.room-card-oos {
+  background: repeating-linear-gradient(
+    45deg,
+    #f1f5f9,
+    #f1f5f9 10px,
+    #e2e8f0 10px,
+    #e2e8f0 20px
+  );
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #dc2626;
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.room-card-oos:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.room-card-oos .room-number,
+.room-card-oos .room-info-type,
+.room-card-oos .room-info-price {
+  color: #64748b;
+}
 
 .reserved-tag {
   background: #f1f5f9;

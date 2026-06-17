@@ -131,6 +131,9 @@ function App() {
   // Primary Status Helper - determines the single primary status for a room.
   // NOTE: compares DB enum values, but RETURNS UI labels (Occupied/Reserved/...).
   const getPrimaryStatus = (room, bookings) => {
+    // Out-of-service is a physical lockdown state and outranks everything else:
+    // the room must never read as sellable to front-desk staff.
+    if (room.status === 'out-of-service') return 'Out of Service';
     // Only active bookings drive room status; cancelled/no_show/checked-out are ignored
     // so the room frees up and shows as Available again.
     const activeB = bookings.find(b =>
@@ -139,9 +142,12 @@ function App() {
     );
     if (activeB?.booking_status === 'checked-in') return 'Occupied';
     if (activeB?.booking_status === 'confirmed') return 'Reserved';
-    if (room.status === 'Dirty') return 'Dirty';
+    if (room.status === 'house-keeping') return 'Dirty';
     return 'Available';
   };
+
+  // Maps a display label to a safe CSS class suffix (e.g. 'Out of Service' -> 'out-of-service').
+  const getStatusClass = (primaryStatus) => primaryStatus.toLowerCase().replace(/\s+/g, '-');
 
   const calculateTotalBalance = (booking) => {
     if (!booking || !booking.check_in || !booking.check_out || !booking.rooms?.room_types?.nightly_rate) return 0;
@@ -246,7 +252,7 @@ function App() {
     if (paymentModalContext === 'checkin' && selectedPaymentBooking) {
       try {
         await supabase.from('bookings').update({ booking_status: 'checked-in' }).eq('booking_id', selectedPaymentBooking.booking_id);
-        await supabase.from('rooms').update({ status: 'Occupied' }).eq('room_id', selectedPaymentBooking.room_id);
+        await supabase.from('rooms').update({ status: 'occupied' }).eq('room_id', selectedPaymentBooking.room_id);
         setMessage(`Checked in successfully. ${msg}`);
       } catch (error) {
         alert("Check-in failed: " + error.message);
@@ -285,7 +291,7 @@ function App() {
     }
     try {
       await supabase.from('bookings').update({ booking_status: 'checked-out' }).eq('booking_id', bookingToProcess.booking_id);
-      await supabase.from('rooms').update({ status: 'Dirty' }).eq('room_id', bookingToProcess.room_id);
+      await supabase.from('rooms').update({ status: 'house-keeping' }).eq('room_id', bookingToProcess.room_id);
       setMessage(`Check-out complete.`);
       setSelectedRoom(null); fetchDashboardData(); 
     } catch (error) { alert("Check-out failed."); }
@@ -297,7 +303,7 @@ function App() {
     const booking = bookings.find(b => b.booking_id === bookingId);
     if (booking?.room_id) {
       // Free the room back up for the front desk.
-      await supabase.from('rooms').update({ status: 'Available' }).eq('room_id', booking.room_id);
+      await supabase.from('rooms').update({ status: 'available' }).eq('room_id', booking.room_id);
     }
     // Soft cancel: preserve the row for the audit trail instead of deleting.
     await supabase
@@ -314,7 +320,7 @@ function App() {
     const booking = bookings.find(b => b.booking_id === bookingId);
     if (booking?.room_id) {
       // Free the room back up for the front desk.
-      await supabase.from('rooms').update({ status: 'Available' }).eq('room_id', booking.room_id);
+      await supabase.from('rooms').update({ status: 'available' }).eq('room_id', booking.room_id);
     }
     // Soft state change: preserve the row, flag the guest never arrived.
     await supabase
@@ -326,8 +332,8 @@ function App() {
   };
 
   const handleMarkClean = async () => {
-    if (!selectedRoom || selectedRoom.status !== 'Dirty') return;
-    await supabase.from('rooms').update({ status: 'Available' }).eq('room_id', selectedRoom.room_id);
+    if (!selectedRoom || selectedRoom.status !== 'house-keeping') return;
+    await supabase.from('rooms').update({ status: 'available' }).eq('room_id', selectedRoom.room_id);
     setMessage(`Room ${selectedRoom.room_number} is ready.`);
     setSelectedRoom(null); fetchDashboardData();
   };
@@ -401,23 +407,23 @@ function App() {
                           <tbody>
                             {rooms.map(room => {
                               const primaryStatus = getPrimaryStatus(room, bookings);
-                              const statusClass = primaryStatus.toLowerCase().replace(' ', '-');
+                              const statusClass = getStatusClass(primaryStatus);
                               return (
                                 <tr key={room.room_id}>
                                   <td><strong>{room.room_number}</strong></td>
                                   <td>{room.room_types?.name}</td>
                                   <td><span className={`status-badge status-${statusClass}`}>{primaryStatus}</span></td>
                                   <td>
-                                    {(room.status === 'Available' || room.status === 'Out Of Service') ? (
+                                    {(room.status === 'available' || room.status === 'out-of-service') ? (
                                     <button
                                       onClick={async () => {
-                                        const newStatus = room.status === 'Available' ? 'Out Of Service' : 'Available';
+                                        const newStatus = room.status === 'available' ? 'out-of-service' : 'available';
                                         const { error } = await supabase
                                           .from('rooms')
                                           .update({ status: newStatus })
                                           .eq('room_id', room.room_id);
                                         if (!error) {
-                                          setMessage(`Room ${room.room_number} ${newStatus === 'Out Of Service' ? 'set to Out Of Service' : 'restored to Available'}.`);
+                                          setMessage(`Room ${room.room_number} ${newStatus === 'out-of-service' ? 'set to Out Of Service' : 'restored to Available'}.`);
                                           fetchDashboardData();
                                         } else {
                                           alert("Failed to update room status: " + error.message);
@@ -426,7 +432,7 @@ function App() {
                                       className="tool-btn"
                                       style={{ fontSize: '0.85rem', padding: '6px 12px' }}
                                     >
-                                      {room.status === 'Available' ? 'Set Out Of Service' : 'Restore to Available'}
+                                      {room.status === 'available' ? 'Set Out Of Service' : 'Restore to Available'}
                                     </button>
                                     ) : (
                                       <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>N/A (Room is {primaryStatus})</span>
@@ -440,7 +446,7 @@ function App() {
                       </div>
                       <div>
                         <h3 style={{ marginBottom: '15px', color: '#64748b', fontSize: '0.9rem', textTransform: 'uppercase' }}>Housekeeping Tracker (Dirty Rooms)</h3>
-                        {rooms.filter(r => r.status === 'Dirty').length > 0 ? (
+                        {rooms.filter(r => r.status === 'house-keeping').length > 0 ? (
                           <table className="pms-table">
                             <thead>
                               <tr>
@@ -450,7 +456,7 @@ function App() {
                               </tr>
                             </thead>
                             <tbody>
-                              {rooms.filter(r => r.status === 'Dirty').map(room => (
+                              {rooms.filter(r => r.status === 'house-keeping').map(room => (
                                 <tr key={room.room_id}>
                                   <td><strong>{room.room_number}</strong></td>
                                   <td>{room.room_types?.name}</td>
@@ -746,9 +752,6 @@ function App() {
                       {(currentTab !== 'Check-In' && currentTab !== 'Check-Out' && currentTab !== 'Reserved') && (
                         <div className="room-grid">
                           {rooms.filter(room => {
-                            // Exclude Out Of Service rooms from room-grid
-                            if (room.status === 'Out Of Service') return false;
-                            
                             const primaryStatus = getPrimaryStatus(room, bookings);
                             const activeB = bookings.find(b => b.room_id === room.room_id);
                             const guestName = (activeB?.guests?.first_name || "").toLowerCase();
@@ -759,15 +762,22 @@ function App() {
                             if (currentTab === 'Available') matchesStatus = primaryStatus === 'Available';
                             if (currentTab === 'Occupied') matchesStatus = primaryStatus === 'Occupied';
                             if (currentTab === 'Housekeeping') matchesStatus = primaryStatus === 'Dirty';
-                            // "All" tab shows everything (matchesStatus remains true)
+                            // "All" tab shows everything (incl. Out of Service so staff can see locked rooms)
                             
                             return (roomMatch || nameMatch) && matchesStatus;
                           }).map(room => {
                             const primaryStatus = getPrimaryStatus(room, bookings);
-                            const statusClass = primaryStatus.toLowerCase();
+                            const statusClass = getStatusClass(primaryStatus);
+                            const isOutOfService = primaryStatus === 'Out of Service';
                             
                             return (
-                              <div key={room.room_id} className={`room-card ${selectedRoom?.room_id === room.room_id ? 'selected' : ''}`} onClick={() => setSelectedRoom(room)}>
+                              <div
+                                key={room.room_id}
+                                className={`room-card ${statusClass === 'out-of-service' ? 'room-card-oos' : ''} ${selectedRoom?.room_id === room.room_id ? 'selected' : ''}`}
+                                onClick={() => setSelectedRoom(room)}
+                                aria-disabled={isOutOfService}
+                                title={isOutOfService ? 'Room is out of service and cannot be booked' : undefined}
+                              >
                                 <div className="room-header"><span className="room-number">{room.room_number}</span><span className={`status-badge status-${statusClass}`}>{primaryStatus}</span></div>
                                 <div className="room-info-type">{room.room_types?.name}</div>
                                 <div className="room-info-price">${room.room_types?.nightly_rate}/night</div>
@@ -781,7 +791,7 @@ function App() {
                         <div className="room-grid">
                           {rooms.filter(room => {
                             // Exclude Out Of Service rooms from room-grid
-                            if (room.status === 'Out Of Service') return false;
+                            if (room.status === 'out-of-service') return false;
                             
                             const primaryStatus = getPrimaryStatus(room, bookings);
                             const activeB = bookings.find(b => b.room_id === room.room_id);
@@ -888,7 +898,7 @@ function App() {
                     </div>
                   )}
 
-                  <WalkInModal isOpen={isWalkInOpen} onClose={() => setIsWalkInOpen(false)} availableRooms={rooms.filter(r => r.status === 'Available')} onBookingComplete={(msg) => { setMessage(msg); fetchDashboardData(); }} />
+                  <WalkInModal isOpen={isWalkInOpen} onClose={() => setIsWalkInOpen(false)} availableRooms={rooms.filter(r => r.status === 'available')} onBookingComplete={(msg) => { setMessage(msg); fetchDashboardData(); }} />
                   <CheckInModal 
                     isOpen={isCheckInModalOpen} 
                     onClose={() => {

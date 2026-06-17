@@ -109,10 +109,10 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         throw bookingError;
       }
 
-      // Update room status to 'Occupied'
+      // Update room status to 'occupied'
       const { error: roomError } = await supabase
         .from('rooms')
-        .update({ status: 'Occupied' })
+        .update({ status: 'occupied' })
         .eq('room_id', booking.room_id);
 
       if (roomError) {
