@@ -96,15 +96,28 @@ function App() {
 
   const fetchDashboardData = async () => {
     setDataLoading(true);
-    const [roomsRes, bookingsRes, transactionsRes] = await Promise.all([
-      supabase.from('rooms').select('*, room_types(*)').order('room_number', { ascending: true }),
-      supabase.from('bookings').select('*, guests(*), rooms(*, room_types(*))'),
-      supabase.from('transactions').select('*')
-    ]);
-    if (roomsRes.data) setRooms(roomsRes.data);
-    if (bookingsRes.data) setBookings(bookingsRes.data);
-    if (transactionsRes.data) setAllTransactions(transactionsRes.data);
-    setDataLoading(false);
+    try {
+      const [roomsRes, bookingsRes, transactionsRes] = await Promise.all([
+        // '*' safely pulls every column, including the newly added rooms.code field.
+        supabase.from('rooms').select('*, room_types(*)').order('room_number', { ascending: true }),
+        supabase.from('bookings').select('*, guests(*), rooms(*, room_types(*))'),
+        supabase.from('transactions').select('*')
+      ]);
+
+      // Supabase returns errors on the response object instead of throwing, so surface
+      // them explicitly — otherwise a failed rooms fetch silently blanks the grid.
+      if (roomsRes.error) console.error("ROOM FETCH ERROR:", roomsRes.error);
+      if (bookingsRes.error) console.error("BOOKINGS FETCH ERROR:", bookingsRes.error);
+      if (transactionsRes.error) console.error("TRANSACTIONS FETCH ERROR:", transactionsRes.error);
+
+      if (roomsRes.data) setRooms(roomsRes.data);
+      if (bookingsRes.data) setBookings(bookingsRes.data);
+      if (transactionsRes.data) setAllTransactions(transactionsRes.data);
+    } catch (error) {
+      console.error("ROOM FETCH ERROR:", error);
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   const activeBooking = selectedRoom 
