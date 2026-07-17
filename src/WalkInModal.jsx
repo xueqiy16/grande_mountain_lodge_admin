@@ -43,7 +43,12 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   useEffect(() => {
     const fetchData = async () => {
       const [typesRes, roomsRes] = await Promise.all([
-        supabase.from('room_types').select('*'),
+        // Price-ascending; break ties on identical rates alphabetically by name.
+        supabase
+          .from('room_types')
+          .select('*')
+          .order('nightly_rate', { ascending: true })
+          .order('name', { ascending: true }),
         supabase.from('rooms').select('*'),
       ]);
       if (typesRes.data) setRoomTypes(typesRes.data);
