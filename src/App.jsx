@@ -99,8 +99,10 @@ function App() {
     try {
       const [roomsRes, bookingsRes, transactionsRes] = await Promise.all([
         // '*' safely pulls every column, including the newly added rooms.code field.
-        supabase.from('rooms').select('*, room_types(*)').order('room_number', { ascending: true }),
-        supabase.from('bookings').select('*, guests(*), rooms(*, room_types(*))'),
+        // Disambiguate the room_types embed via the room_type_id FK: adding rooms.code
+        // (a 2nd FK to room_types) made a bare room_types(*) ambiguous (PostgREST PGRST201).
+        supabase.from('rooms').select('*, room_types!room_type_id(*)').order('room_number', { ascending: true }),
+        supabase.from('bookings').select('*, guests(*), rooms(*, room_types!room_type_id(*))'),
         supabase.from('transactions').select('*')
       ]);
 
