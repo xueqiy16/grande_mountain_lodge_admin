@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 
-const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTransactionType = 'Payment' }) => {
+const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTransactionType = 'purchase' }) => {
   // Helper functions to calculate outstanding balance (copied from App.jsx logic)
   const calculateTotalBalance = (booking) => {
     if (!booking || !booking.check_in || !booking.check_out || !booking.rooms?.room_types?.nightly_rate) return 0;
@@ -16,8 +17,7 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
     if (!booking) return 0;
     const totalCost = Number(calculateTotalBalance(booking));
     const paid = Number(booking.amount_paid || 0);
-    const incidentals = Number(booking.incidentals || 0);
-    return totalCost + incidentals - paid;
+    return totalCost - paid;
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -25,9 +25,10 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
   const [formData, setFormData] = useState({
     amount: '',
     payment_method: '',
-    transaction_type: 'Payment',
+    transaction_type: 'purchase',
     auth_code: '',
-    reference_number: ''
+    reference_number: '',
+    staff_member: ''
   });
 
   // Set default amount to outstanding balance when modal opens or booking changes
@@ -48,9 +49,10 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
       setFormData({
         amount: '',
         payment_method: '',
-        transaction_type: 'Payment',
+        transaction_type: 'purchase',
         auth_code: '',
-        reference_number: ''
+        reference_number: '',
+        staff_member: ''
       });
       setIsProcessing(false);
       setEtransferError(false);
@@ -58,11 +60,12 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
   }, [isOpen]);
 
   // Terminal/card confirmation fields only apply to card transactions (not Cash/Debit/E-transfer).
-  const isEtransfer = formData.payment_method === 'E-transfer';
+  // Comparisons must match the payment_method enum <option> values below.
+  const isEtransfer = formData.payment_method === 'e_transfer';
   const requiresCardDetails =
     formData.payment_method !== '' &&
-    formData.payment_method !== 'Cash' &&
-    formData.payment_method !== 'Debit' &&
+    formData.payment_method !== 'cash' &&
+    formData.payment_method !== 'interac_debit' &&
     !isEtransfer;
 
   const handleSubmit = async (e) => {
@@ -93,7 +96,7 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
       return `${prefix}-${suffix}`;
     };
 
-    // transaction_reference: E-transfer uses the entered code; cards require it or
+    // reference_number: E-transfer uses the entered code; cards require it or
     // auto-generate a standard code; Cash/Debit carry no reference.
     let transactionReference = null;
     if (isEtransfer) {
@@ -113,8 +116,10 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
           amount: amount,
           payment_method: formData.payment_method,
           transaction_type: formData.transaction_type,
+          charged_at: new Date().toISOString(),
+          staff_member: formData.staff_member,
           auth_code: requiresCardDetails ? (formData.auth_code || null) : null,
-          transaction_reference: transactionReference
+          reference_number: transactionReference
         }]);
 
       if (transactionError) {
@@ -229,17 +234,17 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
                 disabled={isProcessing}
               >
                 <option value="">Select payment method...</option>
-                <option value="Visa">Visa</option>
-                <option value="Mastercard">Mastercard</option>
-                <option value="Amex">Amex</option>
-                <option value="Debit">Debit</option>
-                <option value="Cash">Cash</option>
-                <option value="E-transfer">E-transfer</option>
+                <option value="visa">Visa</option>
+                <option value="mastercard">Mastercard</option>
+                <option value="amex">Amex</option>
+                <option value="interac_debit">Debit</option>
+                <option value="cash">Cash</option>
+                <option value="e_transfer">E-transfer</option>
               </select>
             </div>
           </div>
 
-          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr' }}>
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <div className="form-group">
               <label>Transaction Type *</label>
               <select 
@@ -248,8 +253,23 @@ const PaymentModal = ({ isOpen, onClose, booking, onPaymentComplete, defaultTran
                 onChange={(e) => setFormData({...formData, transaction_type: e.target.value})}
                 disabled={isProcessing}
               >
-                <option value="Pre-Auth">Pre-Auth</option>
-                <option value="Payment">Payment</option>
+                {TRANSACTION_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Staff Member *</label>
+              <select
+                required
+                value={formData.staff_member}
+                onChange={(e) => setFormData({...formData, staff_member: e.target.value})}
+                disabled={isProcessing}
+              >
+                <option value="">Select staff member...</option>
+                {STAFF_MEMBERS.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </div>
           </div>

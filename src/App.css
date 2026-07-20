@@ -483,6 +483,14 @@ body {
   letter-spacing: 0.01em;
 }
 
+.field-hint-text {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .form-section-title { margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.9rem; color: var(--primary); }
 
 /* Toast Notifications */
@@ -711,8 +719,8 @@ body {
 }
 
 /* Status Badge mapping - legacy, using main status classes above */
-.status-checked-in { background: #dbeafe; color: #1e40af; }
-.status-checked-out { background: #f1f5f9; color: #475569; }
+.status-checked_in { background: #dbeafe; color: #1e40af; }
+.status-checked_out { background: #f1f5f9; color: #475569; }
 .status-confirmed { background: #fdf4ff; color: #701a75; border: 1px solid #fae8ff; }
 .status-booked { background: #fdf4ff; color: #701a75; border: 1px solid #fae8ff; }
 .status-pending { background: #fffbeb; color: #d97706; }

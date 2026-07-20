@@ -76,7 +76,7 @@ function App() {
           .from('transactions')
           .select('*')
           .eq('booking_id', selectedFolioId)
-          .order('created_at', { ascending: true });
+          .order('charged_at', { ascending: true });
         
         if (!error && data) {
           setFolioTransactions(data);
@@ -125,7 +125,7 @@ function App() {
   const activeBooking = selectedRoom 
     ? bookings.find(b => 
         b.room_id === selectedRoom.room_id && 
-        (b.booking_status === 'checked-in' || b.booking_status === 'confirmed')
+        (b.booking_status === 'checked_in' || b.booking_status === 'confirmed')
       ) 
     : null;
 
@@ -135,8 +135,8 @@ function App() {
       'pending': 'Pending',
       'booked': 'Booked',
       'confirmed': 'Confirmed',
-      'checked-in': 'Checked In',
-      'checked-out': 'Checked Out',
+      'checked_in': 'Checked In',
+      'checked_out': 'Checked Out',
       'cancelled': 'Cancelled',
       'no_show': 'No Show',
     };
@@ -153,9 +153,9 @@ function App() {
     // so the room frees up and shows as Available again.
     const activeB = bookings.find(b =>
       b.room_id === room.room_id &&
-      (b.booking_status === 'checked-in' || b.booking_status === 'confirmed')
+      (b.booking_status === 'checked_in' || b.booking_status === 'confirmed')
     );
-    if (activeB?.booking_status === 'checked-in') return 'Occupied';
+    if (activeB?.booking_status === 'checked_in') return 'Occupied';
     if (activeB?.booking_status === 'confirmed') return 'Reserved';
     if (room.status === 'house-keeping') return 'Dirty';
     return 'Available';
@@ -177,8 +177,7 @@ function App() {
     if (!booking) return "0.00";
     const totalCost = Number(calculateTotalBalance(booking));
     const paid = Number(booking.amount_paid || 0);
-    const incidentals = Number(booking.incidentals || 0);
-    return (totalCost + incidentals - paid).toFixed(2);
+    return (totalCost - paid).toFixed(2);
   };
 
   // Helper function to normalize dates to YYYY-MM-DD format
@@ -211,41 +210,6 @@ function App() {
     setSelectedCheckInBooking(null);
   };
 
-  const handlePostCharge = async (bookingId, currentIncidentals) => {
-    const charge = prompt("Enter the charge amount (e.g., 50.00 for damages):");
-    if (!charge || isNaN(charge)) return;
-    const newIncidentals = Number(currentIncidentals || 0) + Number(charge);
-    const { error } = await supabase.from('bookings').update({ incidentals: newIncidentals }).eq('booking_id', bookingId);
-    if (!error) { setMessage(`Charge of $${Number(charge).toFixed(2)} added.`); fetchDashboardData(); }
-  };
-
-  const handleLateCheckOut = async (booking) => {
-    const lateFee = prompt("Enter late check-out fee amount (e.g., 25.00):");
-    if (!lateFee || isNaN(lateFee) || Number(lateFee) <= 0) {
-      if (lateFee) alert("Please enter a valid fee amount greater than 0.");
-      return;
-    }
-    
-    const currentIncidentals = Number(booking.incidentals || 0);
-    const newIncidentals = currentIncidentals + Number(lateFee);
-    
-    try {
-      const { error } = await supabase
-        .from('bookings')
-        .update({ incidentals: newIncidentals })
-        .eq('booking_id', booking.booking_id);
-      
-      if (!error) {
-        setMessage(`Late check-out fee of $${Number(lateFee).toFixed(2)} added.`);
-        await fetchDashboardData();
-      } else {
-        alert("Failed to add late fee: " + error.message);
-      }
-    } catch (error) {
-      alert("Error: " + error.message);
-    }
-  };
-
   const handlePostPayment = async (bookingId, currentPaid, amount) => {
     const finalAmount = amount || paymentAmount;
     if (!finalAmount || isNaN(finalAmount)) return alert("Enter a valid numeric amount.");
@@ -267,7 +231,7 @@ function App() {
     if (paymentModalContext === 'checkin' && selectedPaymentBooking) {
       try {
         // Room -> 'occupied' is synced by the DB trigger off booking_status.
-        await supabase.from('bookings').update({ booking_status: 'checked-in' }).eq('booking_id', selectedPaymentBooking.booking_id);
+        await supabase.from('bookings').update({ booking_status: 'checked_in' }).eq('booking_id', selectedPaymentBooking.booking_id);
         setMessage(`Checked in successfully. ${msg}`);
       } catch (error) {
         alert("Check-in failed: " + error.message);
@@ -284,7 +248,7 @@ function App() {
         .from('transactions')
         .select('*')
         .eq('booking_id', selectedFolioId)
-        .order('created_at', { ascending: true });
+        .order('charged_at', { ascending: true });
       
       if (!error && data) {
         setFolioTransactions(data);
@@ -306,7 +270,7 @@ function App() {
     }
     try {
       // Room -> 'house-keeping' is synced by the DB trigger off this booking_status change.
-      await supabase.from('bookings').update({ booking_status: 'checked-out' }).eq('booking_id', bookingToProcess.booking_id);
+      await supabase.from('bookings').update({ booking_status: 'checked_out' }).eq('booking_id', bookingToProcess.booking_id);
       setMessage(`Check-out complete.`);
       setSelectedRoom(null); fetchDashboardData(); 
     } catch (error) { alert("Check-out failed."); }
@@ -485,7 +449,7 @@ function App() {
                           <div className="stat-pill">
                             Total Stay Revenue (In-House): <span style={{color: '#22c55e'}}>$
                               {Number(bookings
-                                .filter(b => b.booking_status === 'checked-in')
+                                .filter(b => b.booking_status === 'checked_in')
                                 .reduce((acc, b) => acc + Number(calculateTotalBalance(b)), 0)).toFixed(2)}
                             </span>
                           </div>
@@ -493,9 +457,10 @@ function App() {
                             Payments Collected (Today): <span style={{color: '#22c55e'}}>$
                               {Number(allTransactions
                                 .filter(t => {
-                                  if (t.transaction_type !== 'Payment') return false;
+                                  // Money actually collected = purchases + captured pre-auths (completions).
+                                  if (t.transaction_type !== 'purchase' && t.transaction_type !== 'completion') return false;
                                   const today = new Date().toISOString().split('T')[0];
-                                  const txnDate = normalizeDate(t.created_at);
+                                  const txnDate = normalizeDate(t.charged_at);
                                   return txnDate === today;
                                 })
                                 .reduce((acc, t) => acc + Number(t.amount || 0), 0)).toFixed(2)}
@@ -508,7 +473,7 @@ function App() {
                         {(() => {
                           const today = new Date().toISOString().split('T')[0];
                           const pendingCheckouts = bookings.filter(b => 
-                            normalizeDate(b.check_out) === today && b.booking_status === 'checked-in'
+                            normalizeDate(b.check_out) === today && b.booking_status === 'checked_in'
                           );
                           return pendingCheckouts.length > 0 ? (
                             <table className="pms-table">
@@ -727,17 +692,16 @@ function App() {
                       {currentTab === 'Check-Out' && (
                         <div className="arrivals-container">
                           <div className="view-header"><h2>Expected Check-Outs</h2><div className="date-selector"><label>DATE</label><input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div></div>
-                          {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked-in').length > 0 ? (
+                          {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').length > 0 ? (
                             <table className="pms-table">
-                              <thead><tr><th>Guest Name</th><th>Room</th><th>Stay Dates</th><th>Outstanding</th><th>Late Fee</th><th>Action</th></tr></thead>
+                              <thead><tr><th>Guest Name</th><th>Room</th><th>Stay Dates</th><th>Outstanding</th><th>Action</th></tr></thead>
                               <tbody>
-                                {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked-in').map(booking => (
+                                {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').map(booking => (
                                   <tr key={booking.booking_id}>
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>{booking.rooms?.room_number}</td>
                                     <td>{booking.check_in} to {booking.check_out}</td>
                                     <td style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
-                                    <td><button onClick={() => handleLateCheckOut(booking)} className="tool-btn" style={{ fontSize: '0.75rem', padding: '4px 8px' }}>Add Late Fee</button></td>
                                     <td>
                                       <button 
                                         onClick={() => handleCheckOut(booking)} 
@@ -870,8 +834,8 @@ function App() {
                               <label>GUARANTEE</label>
                               <div className="cc-info-box">
                                 <i className="fa-solid fa-credit-card"></i> 
-                                {activeFolio.card_brand || 'Visa'} •••• {activeFolio.card_last4 || '4242'} <br/>
-                                Exp: {activeFolio.card_exp_month || '01'}/{activeFolio.card_exp_year || '2028'}
+                                {activeFolio.guarantee_method || 'Visa'} •••• {activeFolio.last4 || '4242'} <br/>
+                                Exp: {activeFolio.expiry_month || '01'}/{activeFolio.expiry_year || '2028'}
                               </div>
                             </div>
                           </div>
@@ -880,9 +844,8 @@ function App() {
                             <div className="ledger-table">
                               <div className="ledger-row header"><span>Description</span><span>Debit</span><span>Credit</span></div>
                               <div className="ledger-row"><span>Room Charges</span><span>${Number(calculateTotalBalance(activeFolio)).toFixed(2)}</span><span>-</span></div>
-                              <div className="ledger-row"><span>Incidentals</span><span>${Number(activeFolio.incidentals || 0).toFixed(2)}</span><span>-</span></div>
                               {folioTransactions.map((txn) => (
-                                <div key={txn.id} className="ledger-row" style={{color: '#10b981'}}>
+                                <div key={txn.transaction_id} className="ledger-row" style={{color: '#10b981'}}>
                                   <span>Payment - {txn.transaction_type} ({txn.payment_method})</span>
                                   <span>-</span>
                                   <span>${Number(txn.amount).toFixed(2)}</span>
@@ -896,7 +859,6 @@ function App() {
                               </div>
                             </div>
                             <div className="folio-actions" style={{marginTop: '15px'}}>
-                              <button onClick={() => handlePostCharge(activeFolio.booking_id, activeFolio.incidentals)} className="tool-btn">Add Charge</button>
                               <button onClick={() => handleOpenPaymentModal(activeFolio)} className="tool-btn primary">Post Payment</button>
                             </div>
                           </div>
@@ -924,7 +886,7 @@ function App() {
                     }} 
                     booking={selectedPaymentBooking}
                     onPaymentComplete={handlePaymentComplete}
-                    defaultTransactionType={paymentModalContext === 'checkin' ? 'Pre-Auth' : 'Payment'}
+                    defaultTransactionType={paymentModalContext === 'checkin' ? 'pre_auth' : 'completion'}
                   />
                   {message && <div className="toast-notification">{message}</div>}
                 </main>

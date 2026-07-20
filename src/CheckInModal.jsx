@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 
 const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   // Helper function to calculate total balance (Stay Total)
@@ -20,7 +21,9 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     expiry_month: '',
     expiry_year: '',
     etransfer_reference: '',
-    initial_balance: '0.00'
+    initial_balance: '0.00',
+    staff_member: '',
+    transaction_type: 'pre_auth'
   });
 
   // Set initial balance to Stay Total when modal opens
@@ -43,19 +46,21 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         expiry_month: '',
         expiry_year: '',
         etransfer_reference: '',
-        initial_balance: '0.00'
+        initial_balance: '0.00',
+        staff_member: '',
+        transaction_type: 'pre_auth'
       });
       setIsProcessing(false);
       setEtransferError(false);
     }
   }, [isOpen]);
 
-  // Card metadata only applies to real credit cards (not Cash/Debit/E-transfer).
-  const isEtransfer = formData.card_brand === 'E-transfer';
+  // card_brand holds the selected payment_method enum value (visa/mastercard/amex/interac_debit/cash/e_transfer).
+  const isEtransfer = formData.card_brand === 'e_transfer';
   const requiresCardDetails =
     formData.card_brand !== '' &&
-    formData.card_brand !== 'Cash' &&
-    formData.card_brand !== 'Debit' &&
+    formData.card_brand !== 'cash' &&
+    formData.card_brand !== 'interac_debit' &&
     !isEtransfer;
 
   const handleSubmit = async (e) => {
@@ -87,21 +92,24 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
       return;
     }
 
+    // Payment is only collected when a method is chosen and a balance is due;
+    // amount_paid and the transaction row must stay consistent with each other.
+    const paymentCollected = initialBalance > 0 && !!formData.card_brand;
+
     setIsProcessing(true);
 
     try {
-      // Update booking with card info, initial balance, and change status to 'checked-in'
+      // Update booking with card info, collected payment, and status 'checked_in'.
       const { error: bookingError } = await supabase
         .from('bookings')
         .update({
-          card_brand: formData.card_brand,
           last4: requiresCardDetails ? formData.last4 : null,
           expiry_month: requiresCardDetails ? parseInt(formData.expiry_month) : null,
           expiry_year: requiresCardDetails ? parseInt(formData.expiry_year) : null,
           // E-transfer reference is stored in bookings.payment_notes; null otherwise.
           payment_notes: isEtransfer ? formData.etransfer_reference.trim() : null,
-          amount_paid: 0, // Reset to 0, initial balance will be outstanding
-          booking_status: 'checked-in'
+          amount_paid: paymentCollected ? initialBalance : 0,
+          booking_status: 'checked_in'
         })
         .eq('booking_id', booking.booking_id);
 
@@ -111,6 +119,31 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
 
       // Room status -> 'occupied' is handled by the DB trigger tr_update_room_status
       // off the booking_status change; no client-side rooms update needed.
+
+      // Record the collected payment as a transaction. card_brand holds the selected
+      // transactions.payment_method enum value. Skip when nothing was collected.
+      if (paymentCollected) {
+        const transactionReference = isEtransfer
+          ? formData.etransfer_reference.trim()
+          : (requiresCardDetails ? (booking.moneris_token || null) : null);
+
+        const { error: transactionError } = await supabase
+          .from('transactions')
+          .insert([{
+            booking_id: booking.booking_id,
+            amount: initialBalance,
+            payment_method: formData.card_brand,
+            transaction_type: formData.transaction_type,
+            charged_at: new Date().toISOString(),
+            staff_member: formData.staff_member,
+            auth_code: null,
+            reference_number: transactionReference
+          }]);
+
+        if (transactionError) {
+          throw transactionError;
+        }
+      }
 
       // Success
       onCheckInComplete(`Checked in successfully.`);
@@ -175,7 +208,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
               </div>
               
               <div className="form-section" style={{ marginBottom: '20px' }}>
-                <label>Outstanding Balance (Stay Total)</label>
+                <label>Amount Paid ($)</label>
                 <input 
                   type="number" 
                   step="0.01"
@@ -193,6 +226,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                     fontSize: '1.1rem'
                   }}
                 />
+                <p className="field-hint-text">Stay total: ${calculateTotalBalance(booking).toFixed(2)} — enter full, partial, or deposit amount.</p>
               </div>
             </>
           )}
@@ -207,8 +241,8 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 value={formData.card_brand}
                 onChange={(e) => {
                   const value = e.target.value;
-                  const clearsCard = value !== 'Visa' && value !== 'Mastercard' && value !== 'Amex';
-                  const clearsEtransfer = value !== 'E-transfer';
+                  const clearsCard = value !== 'visa' && value !== 'mastercard' && value !== 'amex';
+                  const clearsEtransfer = value !== 'e_transfer';
                   setEtransferError(false);
                   setFormData({
                     ...formData,
@@ -220,12 +254,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 disabled={isProcessing}
               >
                 <option value="">Select payment method...</option>
-                <option value="Visa">Visa</option>
-                <option value="Mastercard">Mastercard</option>
-                <option value="Amex">Amex</option>
-                <option value="Debit">Debit</option>
-                <option value="Cash">Cash</option>
-                <option value="E-transfer">E-transfer</option>
+                <option value="visa">Visa</option>
+                <option value="mastercard">Mastercard</option>
+                <option value="amex">Amex</option>
+                <option value="interac_debit">Debit</option>
+                <option value="cash">Cash</option>
+                <option value="e_transfer">E-transfer</option>
               </select>
             </div>
             {isEtransfer && (
@@ -292,6 +326,36 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
               </div>
             </div>
           )}
+
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr', marginTop: '15px' }}>
+            <div className="form-group">
+              <label>Transaction Type *</label>
+              <select
+                required
+                value={formData.transaction_type}
+                onChange={(e) => setFormData({...formData, transaction_type: e.target.value})}
+                disabled={isProcessing}
+              >
+                {TRANSACTION_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Staff Member *</label>
+              <select
+                required
+                value={formData.staff_member}
+                onChange={(e) => setFormData({...formData, staff_member: e.target.value})}
+                disabled={isProcessing}
+              >
+                <option value="">Select staff member...</option>
+                {STAFF_MEMBERS.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           <button 
             type="submit" 

@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 
 // Fresh blank reservation state (check_in defaults to today each time it's built).
+// transaction_type defaults to pre_auth (guest starting a stay); staff can switch
+// to purchase when charging the full amount up front.
 const getInitialFormData = () => ({
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
   check_in: new Date().toISOString().split('T')[0], // Default to today
   check_out: '', adults: 1, children: 0, pets: 0,
   card_brand: '', card_holder_name: '', last4: '', expiry_month: '', expiry_year: '',
-  etransfer_reference: ''
+  etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth'
 });
 
 const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => {
@@ -16,6 +19,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   const [selectedType, setSelectedType] = useState('');
   const [roomError, setRoomError] = useState(false);
   const [etransferError, setEtransferError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(getInitialFormData());
 
   // Wipe the entire form back to a clean slate (used on close + successful booking).
@@ -24,6 +28,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     setSelectedType('');
     setRoomError(false);
     setEtransferError(false);
+    setIsSubmitting(false);
   };
 
   // Always reset before delegating to the parent's close handler.
@@ -32,12 +37,13 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     onClose();
   };
 
-  const isEtransfer = formData.card_brand === 'E-transfer';
+  // card_brand holds the selected payment_method enum value (visa/mastercard/amex/interac_debit/cash/e_transfer).
+  const isEtransfer = formData.card_brand === 'e_transfer';
   // Card metadata only applies to real credit cards (not Cash/Debit/E-transfer/empty).
   const requiresCardDetails =
     formData.card_brand !== '' &&
-    formData.card_brand !== 'Cash' &&
-    formData.card_brand !== 'Debit' &&
+    formData.card_brand !== 'cash' &&
+    formData.card_brand !== 'interac_debit' &&
     !isEtransfer;
 
   useEffect(() => {
@@ -89,11 +95,23 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       return;
     }
 
+    // Amount paid is entered by staff; save exactly what they enter (0 allowed for
+    // reservations with no deposit). Reject negatives / non-numeric input.
+    const amountPaid = Number(formData.amount_paid || 0);
+    if (isNaN(amountPaid) || amountPaid < 0) {
+      alert("Please enter a valid amount paid (0 or greater).");
+      return;
+    }
+
+    // Guard against duplicate transaction/booking creation on double-submit.
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const today = new Date().toISOString().split('T')[0];
-    // LOGIC: future check-in => 'confirmed' reservation; today => 'checked-in'.
+    // LOGIC: future check-in => 'confirmed' reservation; today => 'checked_in'.
     // Values must match the booking_status_type enum exactly (lowercase/hyphenated).
     const isFutureBooking = formData.check_in > today;
-    const finalStatus = isFutureBooking ? 'confirmed' : 'checked-in';
+    const finalStatus = isFutureBooking ? 'confirmed' : 'checked_in';
 
     // 1. Create Guest
     const { data: guestData, error: guestError } = await supabase
@@ -105,7 +123,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       }])
       .select().single();
 
-    if (guestError) return alert("Guest Error: " + guestError.message);
+    if (guestError) {
+      setIsSubmitting(false);
+      return alert("Guest Error: " + guestError.message);
+    }
 
     // Generate clean UUID + reference codes to map to the exact bookings schema.
     // Codes use a 6-char alphanumeric pool (A-Z, 0-9) => 36^6 ≈ 2.1B combinations.
@@ -154,7 +175,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         check_out: formData.check_out,
         total_nights: totalNights,
         total_price: totalPrice,
-        amount_paid: 0,
+        // Save exactly what staff collected (supports full, partial, deposit, or none).
+        amount_paid: amountPaid,
         adults: Number(formData.adults) || 0,
         children: Number(formData.children) || 0,
         pets: Number(formData.pets) || 0,
@@ -162,17 +184,47 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         booking_reference: bookingReference,
         moneris_token: monerisToken,
         payment_notes: paymentNotes,
-        card_brand: formData.card_brand,
         card_holder_name: cardHolderName,
         last4: requiresCardDetails ? formData.last4 : null,
         expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
         expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null
       }]);
 
-    if (bookingError) return alert("Booking Error: " + bookingError.message);
+    if (bookingError) {
+      setIsSubmitting(false);
+      return alert("Booking Error: " + bookingError.message);
+    }
 
     // Room status sync (reserved/occupied) is owned by the DB trigger
     // tr_update_room_status, which reads NEW.booking_status on insert.
+
+    // 3. Record the collected payment as a transaction whenever money changed hands
+    // (full, partial, or deposit). card_brand holds the transactions.payment_method
+    // enum value; charged_at is stamped now; staff_member is chosen in the form.
+    if (amountPaid > 0) {
+      // Card gateway reference for cards; e-transfer reference for e_transfer; else none.
+      const transactionReference = isEtransfer
+        ? paymentNotes
+        : (requiresCardDetails ? (monerisToken || generateCode('TXN')) : null);
+
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert([{
+          booking_id: bookingId,
+          amount: amountPaid,
+          payment_method: formData.card_brand,
+          transaction_type: formData.transaction_type,
+          charged_at: new Date().toISOString(),
+          staff_member: formData.staff_member,
+          auth_code: null,
+          reference_number: transactionReference
+        }]);
+
+      if (transactionError) {
+        setIsSubmitting(false);
+        return alert("Payment recorded failed: " + transactionError.message);
+      }
+    }
 
     onBookingComplete(isFutureBooking ? `Reservation created for Room ${targetRoom.room_number}` : `Checked into Room ${targetRoom.room_number}!`);
     handleClose();
@@ -251,8 +303,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                 value={formData.card_brand}
                 onChange={(e) => {
                   const value = e.target.value;
-                  const clearsCard = value !== 'Visa' && value !== 'Mastercard' && value !== 'Amex';
-                  const clearsEtransfer = value !== 'E-transfer';
+                  const clearsCard = value !== 'visa' && value !== 'mastercard' && value !== 'amex';
+                  const clearsEtransfer = value !== 'e_transfer';
                   setEtransferError(false);
                   setFormData({
                     ...formData,
@@ -265,12 +317,64 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                 }}
               >
                 <option value="">Select payment method...</option>
-                <option value="Visa">Visa</option>
-                <option value="Mastercard">Mastercard</option>
-                <option value="Amex">Amex</option>
-                <option value="Debit">Debit</option>
-                <option value="Cash">Cash</option>
-                <option value="E-transfer">E-transfer</option>
+                <option value="visa">Visa</option>
+                <option value="mastercard">Mastercard</option>
+                <option value="amex">Amex</option>
+                <option value="interac_debit">Debit</option>
+                <option value="cash">Cash</option>
+                <option value="e_transfer">E-transfer</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Amount Paid ($) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.amount_paid}
+                onChange={(e) => setFormData({...formData, amount_paid: e.target.value})}
+                required
+              />
+              {(() => {
+                const previewType = roomTypes.find(
+                  t => String(t.room_type_id).trim() === String(selectedType).trim()
+                );
+                if (!previewType || !formData.check_in || !formData.check_out) return null;
+                const s = new Date(formData.check_in + 'T00:00:00');
+                const en = new Date(formData.check_out + 'T00:00:00');
+                const nights = Math.ceil((en.getTime() - s.getTime()) / 86400000);
+                if (!(nights > 0)) return null;
+                const total = (nights * Number(previewType.nightly_rate)).toFixed(2);
+                return <p className="field-hint-text">Stay total: ${total} ({nights} night{nights > 1 ? 's' : ''})</p>;
+              })()}
+            </div>
+
+            <div className="form-group">
+              <label>Transaction Type *</label>
+              <select
+                required
+                value={formData.transaction_type}
+                onChange={(e) => setFormData({...formData, transaction_type: e.target.value})}
+              >
+                {TRANSACTION_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Staff Member *</label>
+              <select
+                required
+                value={formData.staff_member}
+                onChange={(e) => setFormData({...formData, staff_member: e.target.value})}
+              >
+                <option value="">Select staff member...</option>
+                {STAFF_MEMBERS.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </div>
 
@@ -336,8 +440,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
             )}
           </div>
 
-          <button type="submit" className="tool-btn primary" style={{ width: '100%', marginTop: '20px' }}>
-            Complete Reservation
+          <button type="submit" className="tool-btn primary" style={{ width: '100%', marginTop: '20px' }} disabled={isSubmitting}>
+            {isSubmitting ? 'Processing...' : 'Complete Reservation'}
           </button>
         </form>
       </div>
