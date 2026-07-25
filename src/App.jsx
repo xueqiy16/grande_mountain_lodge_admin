@@ -149,7 +149,7 @@ function App() {
     // Out-of-service is a physical lockdown state and outranks everything else:
     // the room must never read as sellable to front-desk staff.
     if (room.status === 'out-of-service') return 'Out of Service';
-    // Only active bookings drive room status; cancelled/no_show/checked-out are ignored
+    // Only active bookings drive room status; cancelled/no_show/checked_out are ignored
     // so the room frees up and shows as Available again.
     const activeB = bookings.find(b =>
       b.room_id === room.room_id &&
