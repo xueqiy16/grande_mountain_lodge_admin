@@ -510,6 +510,13 @@ body {
   font-style: italic;
 }
 
+/* Subtle tint marking fields pre-populated from an existing record (still editable). */
+.prefilled,
+input.prefilled,
+select.prefilled {
+  background: #f1f5f9;
+}
+
 .form-section-title { margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.9rem; color: var(--primary); }
 
 /* Toast Notifications */
