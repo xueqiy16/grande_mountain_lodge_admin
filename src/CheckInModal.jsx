@@ -354,7 +354,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 const nights = Math.ceil((en.getTime() - s.getTime()) / 86400000);
                 if (!(nights > 0)) return null;
                 const total = (nights * Number(previewType.nightly_rate)).toFixed(2);
-                return <p className="field-hint-text">Stay total: ${total} — enter full, partial, or deposit amount.</p>;
+                return <p className="field-hint-text">Stay total: ${total} ({nights} night{nights > 1 ? 's' : ''})</p>;
               })()}
             </div>
 
