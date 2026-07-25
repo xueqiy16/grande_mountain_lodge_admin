@@ -165,7 +165,9 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
 
     try {
       // 1. Update the guest record with any edited profile details.
-      const { error: guestError } = await supabase
+      // .select() returns the affected rows so we can (a) detect a silent 0-row
+      // update (typically an RLS policy or id mismatch) and (b) sync local state.
+      const { data: guestRows, error: guestError } = await supabase
         .from('guests')
         .update({
           first_name: formData.first_name,
@@ -176,13 +178,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           city: formData.city,
           country: formData.country
         })
-        .eq('guest_id', booking.guest_id);
-
-      if (guestError) throw guestError;
+        .eq('guest_id', booking.guest_id)
+        .select();
 
       // 2. Update the booking with edited stay details + note, and check the guest in.
       // No card/guarantee/payment data is written to bookings here.
-      const { error: bookingError } = await supabase
+      const { data: bookingRows, error: bookingError } = await supabase
         .from('bookings')
         .update({
           room_id: targetRoomId,
@@ -197,9 +198,22 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           booking_status: 'checked_in',
           booking_notes: bookingNotes
         })
-        .eq('booking_id', booking.booking_id);
+        .eq('booking_id', booking.booking_id)
+        .select();
 
-      if (bookingError) throw bookingError;
+      if (guestError || bookingError) {
+        if (guestError) console.error('Guest update error:', guestError);
+        if (bookingError) console.error('Booking update error:', bookingError);
+        throw guestError || bookingError;
+      }
+
+      // No error but no rows affected => the write silently did nothing (RLS/id).
+      if (!guestRows || guestRows.length === 0) {
+        console.warn('Guest update affected 0 rows — check RLS policy / guest_id:', booking.guest_id);
+      }
+      if (!bookingRows || bookingRows.length === 0) {
+        console.warn('Booking update affected 0 rows — check RLS policy / booking_id:', booking.booking_id);
+      }
 
       // Room status -> 'occupied' is handled by the DB trigger tr_update_room_status.
 
@@ -226,7 +240,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         if (transactionError) throw transactionError;
       }
 
-      onCheckInComplete(`Checked into Room ${targetRoomNumber}!`);
+      // Hand the freshly-updated rows to the parent for immediate React state sync.
+      onCheckInComplete(`Checked into Room ${targetRoomNumber}!`, {
+        booking_id: booking.booking_id,
+        guest: guestRows?.[0] || null,
+        booking: bookingRows?.[0] || null
+      });
       onClose();
     } catch (error) {
       alert(`Check-in failed: ${error.message}`);

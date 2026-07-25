@@ -203,8 +203,19 @@ function App() {
     setIsCheckInModalOpen(true);
   };
 
-  const handleCheckInComplete = async (msg) => {
+  const handleCheckInComplete = async (msg, updated) => {
     setMessage(msg);
+    // Immediate local state sync so the UI reflects edits without waiting on refetch.
+    if (updated?.booking_id) {
+      setBookings(prev => prev.map(b => {
+        if (b.booking_id !== updated.booking_id) return b;
+        return {
+          ...b,
+          ...(updated.booking || {}),
+          guests: { ...(b.guests || {}), ...(updated.guest || {}) }
+        };
+      }));
+    }
     await fetchDashboardData();
     setIsCheckInModalOpen(false);
     setSelectedCheckInBooking(null);
