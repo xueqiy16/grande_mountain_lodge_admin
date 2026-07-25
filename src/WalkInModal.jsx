@@ -10,7 +10,8 @@ const getInitialFormData = () => ({
   check_in: new Date().toISOString().split('T')[0], // Default to today
   check_out: '', adults: 1, children: 0, pets: 0,
   card_brand: '', card_holder_name: '', last4: '', expiry_month: '', expiry_year: '',
-  etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth'
+  etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
+  notes: ''
 });
 
 const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => {
@@ -143,8 +144,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     const bookingReference = generateCode('BK');
     // moneris_token is STRICTLY a credit-card gateway token: generate only for real cards.
     const monerisToken = requiresCardDetails ? generateCode('RES') : null;
-    // E-transfer reference is stored in the booking's payment_notes column.
-    const paymentNotes = isEtransfer ? formData.etransfer_reference.trim() : null;
+    // Free-text staff notes; mirrored to bookings.payment_notes and transactions.notes.
+    const notes = formData.notes.trim() || null;
+    // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
+    const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
 
     // Pricing: nights between check-in/check-out (min 1) * nightly rate of the type.
     const selectedRoomType = roomTypes.find(
@@ -183,7 +186,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         booking_status: finalStatus,
         booking_reference: bookingReference,
         moneris_token: monerisToken,
-        payment_notes: paymentNotes,
+        payment_notes: notes,
         card_holder_name: cardHolderName,
         last4: requiresCardDetails ? formData.last4 : null,
         expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
@@ -202,10 +205,11 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     // (full, partial, or deposit). card_brand holds the transactions.payment_method
     // enum value; charged_at is stamped now; staff_member is chosen in the form.
     if (amountPaid > 0) {
-      // Card gateway reference for cards; e-transfer reference for e_transfer; else none.
-      const transactionReference = isEtransfer
-        ? paymentNotes
-        : (requiresCardDetails ? (monerisToken || generateCode('TXN')) : null);
+      // reference_number is the card gateway token for cards; e-transfer uses its own
+      // dedicated e_transfer_reference column; cash/debit carry neither.
+      const transactionReference = requiresCardDetails
+        ? (monerisToken || generateCode('TXN'))
+        : null;
 
       const { error: transactionError } = await supabase
         .from('transactions')
@@ -217,7 +221,9 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
           charged_at: new Date().toISOString(),
           staff_member: formData.staff_member,
           auth_code: null,
-          reference_number: transactionReference
+          reference_number: transactionReference,
+          e_transfer_reference: eTransferReference,
+          notes: notes
         }]);
 
       if (transactionError) {
@@ -438,6 +444,19 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                 </div>
               </>
             )}
+          </div>
+
+          <div className="form-section-title">Notes</div>
+          <div className="form-group">
+            <textarea
+              rows={3}
+              maxLength={500}
+              placeholder="Add any payment, arrival, or special request notes here..."
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              style={{ resize: 'vertical', width: '100%' }}
+            />
+            <p className="field-hint-text">{formData.notes.length}/500 characters</p>
           </div>
 
           <button type="submit" className="tool-btn primary" style={{ width: '100%', marginTop: '20px' }} disabled={isSubmitting}>
