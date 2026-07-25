@@ -141,8 +141,9 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     };
 
     const bookingReference = generateCode('BK');
-    // Free-text staff notes; stored on the transactions row.
-    const notes = formData.notes.trim() || null;
+    // Free-text stay note; stored on the bookings row (booking_notes), not the
+    // initial purchase transaction.
+    const bookingNotes = formData.notes.trim() || null;
     // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
 
@@ -181,7 +182,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         // Save exactly what staff collected (supports full, partial, deposit, or none).
         amount_paid: amountPaid,
         booking_status: finalStatus,
-        booking_reference: bookingReference
+        booking_reference: bookingReference,
+        booking_notes: bookingNotes
       }])
       .select('booking_id')
       .single();
@@ -212,7 +214,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
           expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
           expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null,
           e_transfer_reference: eTransferReference,
-          notes: notes,
+          transaction_notes: null,
           staff_member: formData.staff_member,
           charged_at: new Date().toISOString()
         }]);

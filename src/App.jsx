@@ -556,7 +556,7 @@ function App() {
                       <table className="pms-table">
                         <thead>
                           <tr>
-                            <th>Folio ID</th>
+                            <th>Booking Reference</th>
                             <th>Guest Name</th>
                             <th>Room</th>
                             <th>Status</th>
@@ -570,7 +570,7 @@ function App() {
                             b.rooms?.room_number.toString().includes(searchTerm)
                           ).map(b => (
                             <tr key={b.booking_id}>
-                              <td className="folio-number">#FL-{b.booking_id.toString().slice(-5)}</td>
+                              <td className="folio-number">{b.booking_reference || b.booking_id || 'N/A'}</td>
                               <td><strong>{b.guests?.first_name} {b.guests?.last_name}</strong></td>
                               <td>{b.rooms?.room_number}</td>
                               <td><span className={`status-badge status-${b.booking_status}`}>{formatBookingStatus(b.booking_status)}</span></td>
@@ -807,7 +807,13 @@ function App() {
                     <div className="folio-modal-overlay">
                       <div className="folio-modal">
                         <div className="modal-header">
-                          <h3>Folio Detail: {activeFolio.guests?.first_name} {activeFolio.guests?.last_name}</h3>
+                          <div>
+                            <h3>{activeFolio.guests?.first_name} {activeFolio.guests?.last_name}</h3>
+                            <p className="folio-subheader">
+                              Booking Reference: <strong>{activeFolio.booking_reference || activeFolio.booking_id || 'N/A'}</strong>
+                              {' '}· Room {activeFolio.rooms?.room_number || 'N/A'}
+                            </p>
+                          </div>
                           <button onClick={() => setSelectedFolioId(null)} className="close-drawer-btn">✕</button>
                         </div>
                         <div className="folio-grid">
@@ -831,12 +837,22 @@ function App() {
                               </div>
                             </div>
                             <div className="profile-section">
-                              <label>GUARANTEE</label>
-                              <div className="cc-info-box">
-                                <i className="fa-solid fa-credit-card"></i> 
-                                {activeFolio.guarantee_method || 'Visa'} •••• {activeFolio.last4 || '4242'} <br/>
-                                Exp: {activeFolio.expiry_month || '01'}/{activeFolio.expiry_year || '2028'}
+                              <label>NOTES</label>
+                              <div className="profile-data">
+                                {activeFolio.booking_notes || 'None'}
                               </div>
+                            </div>
+                            <div className="profile-section">
+                              <label>GUARANTEE</label>
+                              {activeFolio.guarantee_method ? (
+                                <div className="cc-info-box">
+                                  <i className="fa-solid fa-credit-card"></i> 
+                                  {activeFolio.guarantee_method} •••• {activeFolio.last4 || '----'} <br/>
+                                  Exp: {activeFolio.expiry_month || '--'}/{activeFolio.expiry_year || '----'}
+                                </div>
+                              ) : (
+                                <div className="cc-info-box no-guarantee">No guarantee on file</div>
+                              )}
                             </div>
                           </div>
                           <div className="folio-main">
@@ -846,7 +862,7 @@ function App() {
                               <div className="ledger-row"><span>Room Charges</span><span>${Number(calculateTotalBalance(activeFolio)).toFixed(2)}</span><span>-</span></div>
                               {folioTransactions.map((txn) => (
                                 <div key={txn.transaction_id} className="ledger-row" style={{color: '#10b981'}}>
-                                  <span>Payment - {txn.transaction_type} ({txn.payment_method})</span>
+                                  <span>Payment - {txn.transaction_type} ({txn.payment_method}){txn.transaction_notes ? ` — ${txn.transaction_notes}` : ''}</span>
                                   <span>-</span>
                                   <span>${Number(txn.amount).toFixed(2)}</span>
                                 </div>

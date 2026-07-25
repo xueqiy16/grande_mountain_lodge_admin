@@ -17,22 +17,26 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   const [etransferError, setEtransferError] = useState(false);
   const [formData, setFormData] = useState({
     card_brand: '',
+    cardholder_name: '',
     last4: '',
     expiry_month: '',
     expiry_year: '',
     etransfer_reference: '',
     initial_balance: '0.00',
     staff_member: '',
-    transaction_type: 'pre_auth'
+    transaction_type: 'pre_auth',
+    notes: ''
   });
 
   // Set initial balance to Stay Total when modal opens
   useEffect(() => {
     if (isOpen && booking) {
       const stayTotal = calculateTotalBalance(booking);
+      const guestName = `${booking.guests?.first_name || ''} ${booking.guests?.last_name || ''}`.trim();
       setFormData(prev => ({
         ...prev,
-        initial_balance: stayTotal.toFixed(2)
+        initial_balance: stayTotal.toFixed(2),
+        cardholder_name: guestName
       }));
     }
   }, [isOpen, booking]);
@@ -42,13 +46,15 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     if (!isOpen) {
       setFormData({
         card_brand: '',
+        cardholder_name: '',
         last4: '',
         expiry_month: '',
         expiry_year: '',
         etransfer_reference: '',
         initial_balance: '0.00',
         staff_member: '',
-        transaction_type: 'pre_auth'
+        transaction_type: 'pre_auth',
+        notes: ''
       });
       setIsProcessing(false);
       setEtransferError(false);
@@ -96,20 +102,25 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     // amount_paid and the transaction row must stay consistent with each other.
     const paymentCollected = initialBalance > 0 && !!formData.card_brand;
 
+    // Free-text stay note -> bookings.booking_notes (never payment details).
+    const bookingNotes = formData.notes.trim() || null;
+    // Payment details live on the transactions row, mirroring the Walk-In flow.
+    const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
+    const cardHolderName = requiresCardDetails
+      ? (formData.cardholder_name.trim() || null)
+      : null;
+
     setIsProcessing(true);
 
     try {
-      // Update booking with card info, collected payment, and status 'checked_in'.
+      // Update booking with stay details only: collected balance, status, and the
+      // free-text note. No card/guarantee/payment data is written to bookings here.
       const { error: bookingError } = await supabase
         .from('bookings')
         .update({
-          last4: requiresCardDetails ? formData.last4 : null,
-          expiry_month: requiresCardDetails ? parseInt(formData.expiry_month) : null,
-          expiry_year: requiresCardDetails ? parseInt(formData.expiry_year) : null,
-          // E-transfer reference is stored in bookings.payment_notes; null otherwise.
-          payment_notes: isEtransfer ? formData.etransfer_reference.trim() : null,
           amount_paid: paymentCollected ? initialBalance : 0,
-          booking_status: 'checked_in'
+          booking_status: 'checked_in',
+          booking_notes: bookingNotes
         })
         .eq('booking_id', booking.booking_id);
 
@@ -120,24 +131,24 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
       // Room status -> 'occupied' is handled by the DB trigger tr_update_room_status
       // off the booking_status change; no client-side rooms update needed.
 
-      // Record the collected payment as a transaction. card_brand holds the selected
-      // transactions.payment_method enum value. Skip when nothing was collected.
+      // Record the collected payment as a transaction. All card/payment details
+      // (payment_method, card details, e_transfer_reference) live here, not on bookings.
       if (paymentCollected) {
-        const transactionReference = isEtransfer
-          ? formData.etransfer_reference.trim()
-          : (requiresCardDetails ? (booking.moneris_token || null) : null);
-
         const { error: transactionError } = await supabase
           .from('transactions')
           .insert([{
             booking_id: booking.booking_id,
+            transaction_type: formData.transaction_type,
             amount: initialBalance,
             payment_method: formData.card_brand,
-            transaction_type: formData.transaction_type,
-            charged_at: new Date().toISOString(),
+            cardholder_name: cardHolderName,
+            last4: requiresCardDetails ? formData.last4 : null,
+            expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
+            expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null,
+            e_transfer_reference: eTransferReference,
+            transaction_notes: null,
             staff_member: formData.staff_member,
-            auth_code: null,
-            reference_number: transactionReference
+            charged_at: new Date().toISOString()
           }]);
 
         if (transactionError) {
@@ -311,6 +322,22 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           </div>
 
           {requiresCardDetails && (
+            <div className="form-grid-3" style={{ gridTemplateColumns: '1fr' }}>
+              <div className="form-group">
+                <label>Cardholder Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.cardholder_name}
+                  onChange={(e) => setFormData({...formData, cardholder_name: e.target.value})}
+                  disabled={isProcessing}
+                  placeholder="Name on card"
+                />
+              </div>
+            </div>
+          )}
+
+          {requiresCardDetails && (
             <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 2fr' }}>
               <div className="form-group">
                 <label>Expiry Year *</label>
@@ -355,6 +382,20 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="form-section-title">Notes</div>
+          <div className="form-group">
+            <textarea
+              rows={3}
+              maxLength={500}
+              placeholder="Add any arrival or special request notes here..."
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              disabled={isProcessing}
+              style={{ resize: 'vertical', width: '100%' }}
+            />
+            <p className="field-hint-text">{formData.notes.length}/500 characters</p>
           </div>
 
           <button 
