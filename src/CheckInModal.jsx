@@ -257,14 +257,14 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 <option value="visa">Visa</option>
                 <option value="mastercard">Mastercard</option>
                 <option value="amex">Amex</option>
-                <option value="interac_debit">Debit</option>
+                <option value="interac_debit">Interac Debit</option>
                 <option value="cash">Cash</option>
-                <option value="e_transfer">E-transfer</option>
+                <option value="e_transfer">E-Transfer</option>
               </select>
             </div>
             {isEtransfer && (
               <div className="form-group">
-                <label>E-transfer Reference Number *</label>
+                <label>E-Transfer Reference Number *</label>
                 <input
                   type="text"
                   value={formData.etransfer_reference}
@@ -275,7 +275,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                   placeholder="e.g. ETR-123456"
                 />
                 {etransferError && (
-                  <p className="field-error-text">E-transfer reference number is required.</p>
+                  <p className="field-error-text">E-Transfer reference number is required.</p>
                 )}
               </div>
             )}

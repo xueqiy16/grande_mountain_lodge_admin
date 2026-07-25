@@ -236,7 +236,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     <div className="modal-overlay">
       <div className="modal-content walkin-modal-wide">
         <div className="modal-header">
-          <h3>New Reservation</h3>
+          <h3>New Walk In</h3>
           <button onClick={handleClose} className="close-x">✕</button>
         </div>
         
@@ -320,9 +320,9 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                 <option value="visa">Visa</option>
                 <option value="mastercard">Mastercard</option>
                 <option value="amex">Amex</option>
-                <option value="interac_debit">Debit</option>
+                <option value="interac_debit">Interac Debit</option>
                 <option value="cash">Cash</option>
-                <option value="e_transfer">E-transfer</option>
+                <option value="e_transfer">E-Transfer</option>
               </select>
             </div>
 
@@ -380,7 +380,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
             {isEtransfer && (
               <div className="form-group">
-                <label>E-transfer Reference Number *</label>
+                <label>E-Transfer Reference Number *</label>
                 <input
                   type="text"
                   placeholder="e.g. ETR-123456"
@@ -390,7 +390,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                   aria-invalid={etransferError}
                 />
                 {etransferError && (
-                  <p className="field-error-text">E-transfer reference number is required.</p>
+                  <p className="field-error-text">E-Transfer reference number is required.</p>
                 )}
               </div>
             )}
