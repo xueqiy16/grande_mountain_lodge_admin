@@ -140,11 +140,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       return `${prefix}-${suffix}`;
     };
 
-    const bookingId = crypto.randomUUID();
     const bookingReference = generateCode('BK');
-    // moneris_token is STRICTLY a credit-card gateway token: generate only for real cards.
-    const monerisToken = requiresCardDetails ? generateCode('RES') : null;
-    // Free-text staff notes; mirrored to bookings.payment_notes and transactions.notes.
+    // Free-text staff notes; stored on the transactions row.
     const notes = formData.notes.trim() || null;
     // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
@@ -167,68 +164,62 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
          `${formData.first_name} ${formData.last_name}`.trim())
       : null;
 
-    // 2. Create Booking
-    const { error: bookingError } = await supabase
+    // 2. Create Booking — stay/room details ONLY. Walk-ins carry no guarantee or
+    // card fields on the bookings row; all payment data lives on transactions.
+    const { data: bookingData, error: bookingError } = await supabase
       .from('bookings')
       .insert([{
-        booking_id: bookingId,
         guest_id: guestData.guest_id,
         room_id: targetRoom.room_id,
         check_in: formData.check_in,
         check_out: formData.check_out,
+        adults: Number(formData.adults) || 0,
+        children: Number(formData.children) || 0,
+        pets: Number(formData.pets) || 0,
         total_nights: totalNights,
         total_price: totalPrice,
         // Save exactly what staff collected (supports full, partial, deposit, or none).
         amount_paid: amountPaid,
-        adults: Number(formData.adults) || 0,
-        children: Number(formData.children) || 0,
-        pets: Number(formData.pets) || 0,
         booking_status: finalStatus,
-        booking_reference: bookingReference,
-        moneris_token: monerisToken,
-        payment_notes: notes,
-        card_holder_name: cardHolderName,
-        last4: requiresCardDetails ? formData.last4 : null,
-        expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
-        expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null
-      }]);
+        booking_reference: bookingReference
+      }])
+      .select('booking_id')
+      .single();
 
     if (bookingError) {
       setIsSubmitting(false);
       return alert("Booking Error: " + bookingError.message);
     }
 
+    const bookingId = bookingData.booking_id;
+
     // Room status sync (reserved/occupied) is owned by the DB trigger
     // tr_update_room_status, which reads NEW.booking_status on insert.
 
     // 3. Record the collected payment as a transaction whenever money changed hands
-    // (full, partial, or deposit). card_brand holds the transactions.payment_method
-    // enum value; charged_at is stamped now; staff_member is chosen in the form.
+    // (full, partial, or deposit). All card/payment details live here, not on bookings.
+    // card_brand holds the transactions.payment_method enum value; charged_at is now.
     if (amountPaid > 0) {
-      // reference_number is the card gateway token for cards; e-transfer uses its own
-      // dedicated e_transfer_reference column; cash/debit carry neither.
-      const transactionReference = requiresCardDetails
-        ? (monerisToken || generateCode('TXN'))
-        : null;
-
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert([{
           booking_id: bookingId,
+          transaction_type: formData.transaction_type,
           amount: amountPaid,
           payment_method: formData.card_brand,
-          transaction_type: formData.transaction_type,
-          charged_at: new Date().toISOString(),
-          staff_member: formData.staff_member,
-          auth_code: null,
-          reference_number: transactionReference,
+          cardholder_name: cardHolderName,
+          last4: requiresCardDetails ? formData.last4 : null,
+          expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
+          expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null,
           e_transfer_reference: eTransferReference,
-          notes: notes
+          notes: notes,
+          staff_member: formData.staff_member,
+          charged_at: new Date().toISOString()
         }]);
 
       if (transactionError) {
         setIsSubmitting(false);
-        return alert("Payment recorded failed: " + transactionError.message);
+        return alert("Payment recording failed: " + transactionError.message);
       }
     }
 
