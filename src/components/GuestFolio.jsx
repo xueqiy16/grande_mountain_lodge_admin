@@ -1,0 +1,932 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import PaymentModal from '../PaymentModal';
+import { STAFF_MEMBERS } from '../lib/constants';
+
+// Status filter tabs (Checked In default). "all" shows every booking.
+const STATUS_TABS = [
+  { key: 'checked_in', label: 'Checked In' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'checked_out', label: 'Checked Out' },
+  { key: 'cancelled', label: 'Cancelled' },
+  { key: 'no_show', label: 'No Show' },
+  { key: 'all', label: 'All' }
+];
+
+const BOOKING_STATUS_OPTIONS = ['confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show'];
+
+// folio_entries enums (exact DB values).
+const ENTRY_TYPES = ['room_charge', 'tax', 'damage', 'fee', 'discount', 'extra_night', 'tip', 'other'];
+const TAX_TYPES = ['gst', 'tourism_levy', 'other'];
+// Everything except discount is a positive charge (debit); discount is a credit.
+const isDebitEntry = (type) => type !== 'discount';
+
+// Whole nights between two YYYY-MM-DD dates (0 if invalid/negative).
+const nightsBetween = (checkIn, checkOut) => {
+  if (!checkIn || !checkOut) return 0;
+  const s = new Date(checkIn + 'T00:00:00');
+  const e = new Date(checkOut + 'T00:00:00');
+  const n = Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
+  return n > 0 ? n : 0;
+};
+
+const formatEntryDate = (d) => {
+  if (!d) return 'N/A';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const todayISODate = () => new Date().toISOString().split('T')[0];
+
+// total_price = base room charge + Σ(debit entries) − Σ(discount entries).
+const computeTotalPrice = (baseCharge, entries) => {
+  const debits = entries.filter(e => isDebitEntry(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
+  const discounts = entries.filter(e => e.entry_type === 'discount').reduce((a, e) => a + Number(e.amount || 0), 0);
+  return Number(baseCharge) + debits - discounts;
+};
+
+const formatBookingStatus = (status) => {
+  const labels = {
+    confirmed: 'Confirmed',
+    checked_in: 'Checked In',
+    checked_out: 'Checked Out',
+    cancelled: 'Cancelled',
+    no_show: 'No Show'
+  };
+  return labels[status] || status || 'N/A';
+};
+
+// Stay total = nights * nightly rate.
+const calculateTotalBalance = (b) => {
+  if (!b || !b.check_in || !b.check_out || !b.rooms?.room_types?.nightly_rate) return 0;
+  const start = new Date(b.check_in + 'T00:00:00');
+  const end = new Date(b.check_out + 'T00:00:00');
+  const nights = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+  return Number(nights) * Number(b.rooms.room_types.nightly_rate);
+};
+
+const calculateOutstandingBalance = (b) => {
+  if (!b) return 0;
+  // Prefer the stored total_price (kept current by folio/date recalcs); fall back to
+  // the derived base room charge for legacy rows without a persisted total.
+  const total = b?.total_price != null ? Number(b.total_price) : Number(calculateTotalBalance(b));
+  return total - Number(b?.amount_paid || 0);
+};
+
+// Green highlight when a draft value diverges from the original (edit feedback).
+const editedClass = (draftVal, originalVal) =>
+  String(draftVal ?? '') !== String(originalVal ?? '') ? 'input-edited' : '';
+
+const GuestFolio = ({
+  bookings = [],
+  guests = [],
+  rooms = [],
+  transactions = [],
+  staffList = [],
+  refreshData,
+  supabase,
+  openBookingId = null,
+  onDetailClose
+}) => {
+  const staff = staffList && staffList.length ? staffList : STAFF_MEMBERS;
+
+  const [activeTab, setActiveTab] = useState('checked_in');
+  const [search, setSearch] = useState('');
+  const [detailId, setDetailId] = useState(null);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [guestDraft, setGuestDraft] = useState({});
+  const [bookingDraft, setBookingDraft] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  // "New Transaction" modal
+  const [payBooking, setPayBooking] = useState(null);
+  const [payTxns, setPayTxns] = useState([]);
+
+  // "More Details" transaction sub-modal
+  const [txnDetail, setTxnDetail] = useState(null);
+  const [txnDraft, setTxnDraft] = useState({});
+  const [savingTxn, setSavingTxn] = useState(false);
+
+  // folio_entries ledger + "+ Add Charge" modal
+  const [folioEntries, setFolioEntries] = useState([]);
+  const [addChargeOpen, setAddChargeOpen] = useState(false);
+  const [savingCharge, setSavingCharge] = useState(false);
+  const blankCharge = {
+    entry_type: '',
+    tax_type: 'gst',
+    amount: '',
+    description: '',
+    staff_member: '',
+    notes: '',
+    entry_date: todayISODate()
+  };
+  const [chargeForm, setChargeForm] = useState(blankCharge);
+
+  // Resolve nested/looked-up relations defensively.
+  const resolveGuest = (b) => b?.guests || guests.find(g => g?.guest_id === b?.guest_id) || {};
+  const resolveRoom = (b) => b?.rooms || rooms.find(r => r?.room_id === b?.room_id) || {};
+
+  const detailBooking = useMemo(
+    () => bookings.find(b => b?.booking_id === detailId) || null,
+    [bookings, detailId]
+  );
+
+  // Allow a parent tab (e.g. dashboard "View Guest Folio") to open a specific folio.
+  useEffect(() => {
+    if (openBookingId) setDetailId(openBookingId);
+  }, [openBookingId]);
+
+  const closeDetail = () => {
+    setDetailId(null);
+    setIsEditing(false);
+    onDetailClose?.();
+  };
+
+  const filteredBookings = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bookings.filter(b => {
+      if (activeTab !== 'all' && b?.booking_status !== activeTab) return false;
+      if (!q) return true;
+      const g = resolveGuest(b);
+      const r = resolveRoom(b);
+      const haystack = [
+        g.first_name, g.last_name, g.phone, g.email,
+        r.room_number, r.code, r.room_types?.code,
+        b.check_in, b.check_out
+      ].map(x => String(x ?? '').toLowerCase());
+      return haystack.some(h => h.includes(q));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, activeTab, search, guests, rooms]);
+
+  const receivables = bookings.reduce((acc, b) => acc + Number(calculateOutstandingBalance(b)), 0);
+
+  const bookingTxns = useMemo(
+    () => (detailBooking ? transactions.filter(t => t?.booking_id === detailBooking.booking_id) : []),
+    [transactions, detailBooking]
+  );
+
+  const fetchFolioEntries = async (bookingId) => {
+    if (!bookingId) { setFolioEntries([]); return; }
+    const { data, error } = await supabase
+      .from('folio_entries')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .order('entry_date', { ascending: true });
+    if (error) {
+      console.error('FOLIO ENTRIES FETCH ERROR:', error);
+      setFolioEntries([]);
+    } else {
+      setFolioEntries(data || []);
+    }
+  };
+
+  // Load folio entries whenever the open booking changes.
+  useEffect(() => {
+    fetchFolioEntries(detailId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId]);
+
+  // Live pricing. In edit mode the base charge tracks the draft dates so the
+  // read-only Total Nights / Total Price reflect the pending change immediately.
+  const nightlyRate = Number(resolveRoom(detailBooking).room_types?.nightly_rate || 0);
+  const effCheckIn = isEditing ? bookingDraft.check_in : detailBooking?.check_in;
+  const effCheckOut = isEditing ? bookingDraft.check_out : detailBooking?.check_out;
+  const liveNights = nightsBetween(effCheckIn, effCheckOut);
+  const baseRoomCharge = liveNights * nightlyRate;
+  const sumDebits = folioEntries.filter(e => isDebitEntry(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
+  const sumDiscounts = folioEntries.filter(e => e.entry_type === 'discount').reduce((a, e) => a + Number(e.amount || 0), 0);
+  const liveTotalPrice = baseRoomCharge + sumDebits - sumDiscounts;
+  const transactionsPaid = Number(detailBooking?.amount_paid || 0);
+  const liveOutstanding = liveTotalPrice - transactionsPaid;
+
+  const startEdit = () => {
+    if (!detailBooking) return;
+    const g = resolveGuest(detailBooking);
+    setGuestDraft({
+      first_name: g.first_name || '',
+      last_name: g.last_name || '',
+      email: g.email || '',
+      phone: g.phone || '',
+      address: g.address || '',
+      city: g.city || '',
+      country: g.country || ''
+    });
+    setBookingDraft({
+      check_in: detailBooking.check_in || '',
+      check_out: detailBooking.check_out || '',
+      adults: detailBooking.adults ?? 0,
+      children: detailBooking.children ?? 0,
+      pets: detailBooking.pets ?? 0,
+      booking_status: detailBooking.booking_status || '',
+      booking_notes: detailBooking.booking_notes || ''
+    });
+    setIsEditing(true);
+  };
+
+  const saveEdits = async () => {
+    if (!detailBooking) return;
+    setIsSaving(true);
+    try {
+      const guestId = detailBooking.guest_id || resolveGuest(detailBooking).guest_id;
+      if (guestId) {
+        const { error: gErr } = await supabase
+          .from('guests')
+          .update({
+            first_name: guestDraft.first_name || null,
+            last_name: guestDraft.last_name || null,
+            email: guestDraft.email || null,
+            phone: guestDraft.phone || null,
+            address: guestDraft.address || null,
+            city: guestDraft.city || null,
+            country: guestDraft.country || null
+          })
+          .eq('guest_id', guestId);
+        if (gErr) throw gErr;
+      }
+
+      // Date-driven recalculation: nights = (check_out - check_in), base room
+      // charge = nightly_rate * nights, and total_price = base + folio debits - discounts.
+      const newNights = Math.max(1, nightsBetween(bookingDraft.check_in, bookingDraft.check_out));
+      const newBaseCharge = newNights * nightlyRate;
+      const newTotalPrice = Number(computeTotalPrice(newBaseCharge, folioEntries).toFixed(2));
+
+      const { error: bErr } = await supabase
+        .from('bookings')
+        .update({
+          check_in: bookingDraft.check_in || null,
+          check_out: bookingDraft.check_out || null,
+          adults: parseInt(bookingDraft.adults, 10) || 0,
+          children: parseInt(bookingDraft.children, 10) || 0,
+          pets: parseInt(bookingDraft.pets, 10) || 0,
+          booking_status: bookingDraft.booking_status || null,
+          booking_notes: bookingDraft.booking_notes || null,
+          total_nights: newNights,
+          total_price: newTotalPrice
+        })
+        .eq('booking_id', detailBooking.booking_id);
+      if (bErr) throw bErr;
+
+      await refreshData?.();
+      setIsEditing(false);
+    } catch (e) {
+      alert('Save failed: ' + e.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openPayment = async (b) => {
+    setPayBooking(b);
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('booking_id', b.booking_id)
+      .order('charged_at', { ascending: true });
+    setPayTxns(!error && data ? data : []);
+  };
+
+  const openTxn = (t) => {
+    setTxnDetail(t);
+    setTxnDraft({
+      transaction_notes: t.transaction_notes || '',
+      staff_member: t.staff_member || '',
+      e_transfer_reference: t.e_transfer_reference || ''
+    });
+  };
+
+  const saveTxn = async () => {
+    if (!txnDetail) return;
+    setSavingTxn(true);
+    try {
+      // Only non-financial fields are writable — amount/type are locked to protect the ledger.
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          transaction_notes: txnDraft.transaction_notes || null,
+          staff_member: txnDraft.staff_member || null,
+          e_transfer_reference: txnDraft.e_transfer_reference || null
+        })
+        .eq('transaction_id', txnDetail.transaction_id);
+      if (error) throw error;
+      await refreshData?.();
+      setTxnDetail(null);
+    } catch (e) {
+      alert('Transaction update failed: ' + e.message);
+    } finally {
+      setSavingTxn(false);
+    }
+  };
+
+  const openAddCharge = () => {
+    setChargeForm({ ...blankCharge, entry_date: todayISODate() });
+    setAddChargeOpen(true);
+  };
+
+  const saveCharge = async () => {
+    if (!detailBooking) return;
+    if (!chargeForm.entry_type) { alert('Please select a charge type.'); return; }
+    const amount = Number(chargeForm.amount);
+    if (!amount || amount <= 0 || isNaN(amount)) { alert('Please enter a valid amount greater than 0.'); return; }
+
+    setSavingCharge(true);
+    try {
+      const payload = {
+        booking_id: detailBooking.booking_id,
+        entry_type: chargeForm.entry_type,
+        tax_type: chargeForm.entry_type === 'tax' ? chargeForm.tax_type : null,
+        amount,
+        description: chargeForm.description.trim() || null,
+        staff_member: chargeForm.staff_member || null,
+        notes: chargeForm.notes.trim() || null,
+        entry_date: chargeForm.entry_date || todayISODate()
+      };
+
+      const { data, error } = await supabase.from('folio_entries').insert([payload]).select();
+      if (error) throw error;
+
+      // Recalculate total_price = base + Σ(debits) − Σ(discounts) including the new entry.
+      const newEntries = [...folioEntries, ...(data && data.length ? data : [payload])];
+      const newTotalPrice = Number(computeTotalPrice(baseRoomCharge, newEntries).toFixed(2));
+      const { error: bErr } = await supabase
+        .from('bookings')
+        .update({ total_price: newTotalPrice })
+        .eq('booking_id', detailBooking.booking_id);
+      if (bErr) throw bErr;
+
+      await fetchFolioEntries(detailBooking.booking_id);
+      await refreshData?.();
+      setAddChargeOpen(false);
+    } catch (e) {
+      alert('Add charge failed: ' + e.message);
+    } finally {
+      setSavingCharge(false);
+    }
+  };
+
+  const origGuest = detailBooking ? resolveGuest(detailBooking) : {};
+  const origRoom = detailBooking ? resolveRoom(detailBooking) : {};
+  const roomCode = origRoom.code || origRoom.room_types?.code || origRoom.room_number || 'N/A';
+
+  return (
+    <div className="folio-view">
+      <div className="view-header">
+        <h2>Guest Folios & Ledger</h2>
+        <div className="pms-stats">
+          <div className="stat-pill">Receivables: <span style={{ color: '#ef4444' }}>${receivables.toFixed(2)}</span></div>
+        </div>
+      </div>
+
+      {/* Status filter tabs */}
+      <div className="folio-tabs">
+        {STATUS_TABS.map(tab => (
+          <button
+            key={tab.key}
+            className={`folio-tab ${activeTab === tab.key ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Real-time search */}
+      <input
+        type="text"
+        className="folio-search"
+        placeholder="Search by name, phone, email, room, or stay dates..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
+      <table className="pms-table folio-table">
+        <thead>
+          <tr>
+            <th style={{ width: '150px' }}>Booking Reference</th>
+            <th>Guest Name</th>
+            <th style={{ width: '80px' }}>Room</th>
+            <th style={{ width: '120px' }}>Status</th>
+            <th style={{ width: '110px' }}>Balance</th>
+            <th style={{ width: '220px' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredBookings.length === 0 ? (
+            <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>No bookings match this filter.</td></tr>
+          ) : filteredBookings.map(b => {
+            const g = resolveGuest(b);
+            const r = resolveRoom(b);
+            return (
+              <tr key={b.booking_id}>
+                <td className="folio-number">{b?.booking_reference || b?.booking_id || 'N/A'}</td>
+                <td><strong>{g?.first_name || 'N/A'} {g?.last_name || ''}</strong></td>
+                <td>{r?.room_number || 'N/A'}</td>
+                <td><span className={`status-badge status-${b?.booking_status}`}>{formatBookingStatus(b?.booking_status)}</span></td>
+                <td className={`balance-cell ${Number(calculateOutstandingBalance(b)) > 0 ? 'unpaid' : 'paid'}`}>
+                  ${Number(calculateOutstandingBalance(b)).toFixed(2)}
+                </td>
+                <td>
+                  <div className="folio-row-actions">
+                    <button className="tool-btn sm" onClick={() => setDetailId(b.booking_id)}>Details</button>
+                    <button className="tool-btn sm primary" onClick={() => openPayment(b)}>New Transaction</button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {/* DETAILS MODAL */}
+      {detailBooking && (
+        <div className="folio-modal-overlay" onClick={closeDetail}>
+          <div className="folio-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>{origGuest?.first_name || 'N/A'} {origGuest?.last_name || ''}</h3>
+                <p className="folio-subheader">
+                  Booking Reference: <strong>{detailBooking?.booking_reference || detailBooking?.booking_id || 'N/A'}</strong>
+                  {' '}· Room {origRoom?.room_number || 'N/A'}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {!isEditing ? (
+                  <button className="tool-btn sm" onClick={startEdit}>Edit</button>
+                ) : (
+                  <button className="tool-btn sm primary" onClick={saveEdits} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
+                <button onClick={closeDetail} className="close-drawer-btn">✕</button>
+              </div>
+            </div>
+
+            <div className="folio-detail-body">
+              {/* GUEST DETAILS */}
+              <div className="detail-section-title">Guest Details</div>
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>First Name</label>
+                  <input
+                    value={isEditing ? guestDraft.first_name : (origGuest?.first_name || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, first_name: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.first_name, origGuest?.first_name) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Last Name</label>
+                  <input
+                    value={isEditing ? guestDraft.last_name : (origGuest?.last_name || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, last_name: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.last_name, origGuest?.last_name) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Email</label>
+                  <input
+                    value={isEditing ? guestDraft.email : (origGuest?.email || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, email: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.email, origGuest?.email) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Phone</label>
+                  <input
+                    value={isEditing ? guestDraft.phone : (origGuest?.phone || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, phone: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.phone, origGuest?.phone) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Address</label>
+                  <input
+                    value={isEditing ? guestDraft.address : (origGuest?.address || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, address: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.address, origGuest?.address) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>City</label>
+                  <input
+                    value={isEditing ? guestDraft.city : (origGuest?.city || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, city: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.city, origGuest?.city) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Country</label>
+                  <input
+                    value={isEditing ? guestDraft.country : (origGuest?.country || '')}
+                    onChange={(e) => setGuestDraft({ ...guestDraft, country: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(guestDraft.country, origGuest?.country) : ''}
+                  />
+                </div>
+              </div>
+
+              {/* ROOM & STAY */}
+              <div className="detail-section-title">Room &amp; Stay</div>
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Room Code</label>
+                  <input value={roomCode} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <label>Check-in</label>
+                  <input
+                    type="date"
+                    value={isEditing ? bookingDraft.check_in : (detailBooking?.check_in || '')}
+                    onChange={(e) => setBookingDraft({ ...bookingDraft, check_in: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(bookingDraft.check_in, detailBooking?.check_in) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Check-out</label>
+                  <input
+                    type="date"
+                    value={isEditing ? bookingDraft.check_out : (detailBooking?.check_out || '')}
+                    onChange={(e) => setBookingDraft({ ...bookingDraft, check_out: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(bookingDraft.check_out, detailBooking?.check_out) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Total Nights {isEditing ? '(auto)' : ''}</label>
+                  <input value={liveNights || detailBooking?.total_nights || 0} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <label>Total Price {isEditing ? '(auto)' : ''}</label>
+                  <input value={`$${Number(liveTotalPrice).toFixed(2)}`} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <label>Booking Status</label>
+                  <select
+                    value={isEditing ? bookingDraft.booking_status : (detailBooking?.booking_status || '')}
+                    onChange={(e) => setBookingDraft({ ...bookingDraft, booking_status: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(bookingDraft.booking_status, detailBooking?.booking_status) : ''}
+                  >
+                    {BOOKING_STATUS_OPTIONS.map(s => (
+                      <option key={s} value={s}>{formatBookingStatus(s)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="detail-field">
+                  <label>Cardholder Name</label>
+                  <input value={detailBooking?.card_holder_name || 'N/A'} disabled readOnly />
+                </div>
+              </div>
+
+              {/* OCCUPANCY */}
+              <div className="detail-section-title">Occupancy</div>
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Adults</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={isEditing ? bookingDraft.adults : (detailBooking?.adults ?? 0)}
+                    onChange={(e) => setBookingDraft({ ...bookingDraft, adults: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(bookingDraft.adults, detailBooking?.adults ?? 0) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Children</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={isEditing ? bookingDraft.children : (detailBooking?.children ?? 0)}
+                    onChange={(e) => setBookingDraft({ ...bookingDraft, children: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(bookingDraft.children, detailBooking?.children ?? 0) : ''}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Pets</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={isEditing ? bookingDraft.pets : (detailBooking?.pets ?? 0)}
+                    onChange={(e) => setBookingDraft({ ...bookingDraft, pets: e.target.value })}
+                    disabled={!isEditing}
+                    className={isEditing ? editedClass(bookingDraft.pets, detailBooking?.pets ?? 0) : ''}
+                  />
+                </div>
+              </div>
+
+              {/* NOTES */}
+              <div className="detail-section-title">Notes</div>
+              {isEditing ? (
+                <textarea
+                  className={`notes-edit ${editedClass(bookingDraft.booking_notes, detailBooking?.booking_notes)}`}
+                  rows={5}
+                  value={bookingDraft.booking_notes}
+                  onChange={(e) => setBookingDraft({ ...bookingDraft, booking_notes: e.target.value })}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              ) : (
+                <div className="notes-log">{detailBooking?.booking_notes || 'None'}</div>
+              )}
+
+              {/* FOLIO ENTRIES LEDGER */}
+              <div className="ledger-card">
+                <div className="ledger-card-head">
+                  <div className="detail-section-title" style={{ margin: 0, border: 'none' }}>Ledger</div>
+                  <button className="tool-btn sm primary" onClick={openAddCharge}>+ Add Charge</button>
+                </div>
+                <div className="txn-ledger-scroll">
+                  <table className="pms-table txn-ledger-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '90px' }}>Date</th>
+                        <th style={{ width: '110px' }}>Type</th>
+                        <th>Description</th>
+                        <th style={{ width: '90px' }}>Tax</th>
+                        <th style={{ width: '90px' }}>Amount</th>
+                        <th style={{ width: '130px' }}>Staff</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Derived base room charge line (nightly_rate × nights) */}
+                      <tr>
+                        <td>{formatEntryDate(effCheckIn)}</td>
+                        <td>room_charge</td>
+                        <td>Base Room Charge ({liveNights} night{liveNights === 1 ? '' : 's'} × ${nightlyRate.toFixed(2)})</td>
+                        <td>-</td>
+                        <td>${baseRoomCharge.toFixed(2)}</td>
+                        <td>-</td>
+                        <td>-</td>
+                      </tr>
+                      {folioEntries.map((e, idx) => {
+                        const debit = isDebitEntry(e.entry_type);
+                        return (
+                          <tr key={e.folio_entry_id || idx}>
+                            <td>{formatEntryDate(e.entry_date)}</td>
+                            <td>{e.entry_type || 'N/A'}</td>
+                            <td>{e.description || '-'}</td>
+                            <td>{e.tax_type || '-'}</td>
+                            <td style={{ color: debit ? '#0f172a' : '#ef4444' }}>
+                              {debit ? '' : '-'}${Number(e.amount || 0).toFixed(2)}
+                            </td>
+                            <td>{e.staff_member || '-'}</td>
+                            <td className="notes-cell">{e.notes || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Balance summary: Σ Debits − Discounts − Payments = Outstanding */}
+                <div className="ledger-summary">
+                  <div className="ledger-summary-row"><span>Total Charges</span><span>${(baseRoomCharge + sumDebits).toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>Discounts</span><span>-${sumDiscounts.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>Payments (Transactions)</span><span>-${transactionsPaid.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row total">
+                    <span>Outstanding Balance</span>
+                    <span className={liveOutstanding > 0 ? 'debt' : 'clear'}>${liveOutstanding.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TRANSACTION LEDGER */}
+              <div className="detail-section-title">Transactions</div>
+              <div className="txn-ledger-scroll">
+                <table className="pms-table txn-ledger-table">
+                  <thead>
+                    <tr>
+                      <th>Amount</th>
+                      <th>Type</th>
+                      <th>Method</th>
+                      <th>Staff</th>
+                      <th style={{ width: '110px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bookingTxns.length === 0 ? (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8' }}>No transactions yet.</td></tr>
+                    ) : bookingTxns.map(t => (
+                      <tr key={t.transaction_id}>
+                        <td>${Number(t?.amount || 0).toFixed(2)}</td>
+                        <td>{t?.transaction_type || 'N/A'}</td>
+                        <td>{t?.payment_method || 'N/A'}</td>
+                        <td>{t?.staff_member || 'N/A'}</td>
+                        <td><button className="tool-btn sm" onClick={() => openTxn(t)}>More Details</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRANSACTION "MORE DETAILS" SUB-MODAL */}
+      {txnDetail && (
+        <div className="modal-overlay" onClick={() => setTxnDetail(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Transaction Details</h3>
+              <button onClick={() => setTxnDetail(null)} className="close-drawer-btn">✕</button>
+            </div>
+
+            <div className="detail-grid">
+              {/* Locked financial fields */}
+              <div className="detail-field">
+                <label>Amount (locked)</label>
+                <input value={`$${Number(txnDetail?.amount || 0).toFixed(2)}`} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Transaction Type (locked)</label>
+                <input value={txnDetail?.transaction_type || 'N/A'} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Payment Method</label>
+                <input value={txnDetail?.payment_method || 'N/A'} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Cardholder Name</label>
+                <input value={txnDetail?.cardholder_name || 'N/A'} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Last 4</label>
+                <input value={txnDetail?.last4 || 'N/A'} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Expiry</label>
+                <input value={txnDetail?.expiry_month ? `${txnDetail.expiry_month}/${txnDetail.expiry_year || ''}` : 'N/A'} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Auth Code</label>
+                <input value={txnDetail?.auth_code || 'N/A'} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Reference Number</label>
+                <input value={txnDetail?.reference_number || 'N/A'} disabled readOnly />
+              </div>
+
+              {/* Editable non-financial fields */}
+              <div className="detail-field">
+                <label>Staff Member</label>
+                <select
+                  value={txnDraft.staff_member}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, staff_member: e.target.value })}
+                  className={editedClass(txnDraft.staff_member, txnDetail?.staff_member)}
+                >
+                  <option value="">Unspecified</option>
+                  {staff.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+              <div className="detail-field">
+                <label>E-Transfer Reference</label>
+                <input
+                  value={txnDraft.e_transfer_reference}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
+                  className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
+                />
+              </div>
+            </div>
+
+            <div className="detail-field" style={{ marginTop: '12px' }}>
+              <label>Transaction Notes</label>
+              <textarea
+                rows={4}
+                maxLength={500}
+                value={txnDraft.transaction_notes}
+                onChange={(e) => setTxnDraft({ ...txnDraft, transaction_notes: e.target.value })}
+                className={`notes-edit ${editedClass(txnDraft.transaction_notes, txnDetail?.transaction_notes)}`}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+              <p className="field-hint-text">{(txnDraft.transaction_notes || '').length}/500 characters</p>
+            </div>
+
+            <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveTxn} disabled={savingTxn}>
+              {savingTxn ? 'Saving...' : 'Save Transaction'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* + ADD CHARGE SUB-MODAL (folio_entries) */}
+      {addChargeOpen && (
+        <div className="modal-overlay" onClick={() => !savingCharge && setAddChargeOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add Charge</h3>
+              <button onClick={() => !savingCharge && setAddChargeOpen(false)} className="close-drawer-btn">✕</button>
+            </div>
+
+            <div className="detail-grid">
+              <div className="detail-field">
+                <label>Charge Type *</label>
+                <select
+                  value={chargeForm.entry_type}
+                  onChange={(e) => setChargeForm({ ...chargeForm, entry_type: e.target.value })}
+                  disabled={savingCharge}
+                >
+                  <option value="">Select charge type...</option>
+                  {ENTRY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              {chargeForm.entry_type === 'tax' && (
+                <div className="detail-field">
+                  <label>Tax Type *</label>
+                  <select
+                    value={chargeForm.tax_type}
+                    onChange={(e) => setChargeForm({ ...chargeForm, tax_type: e.target.value })}
+                    disabled={savingCharge}
+                  >
+                    {TAX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="detail-field">
+                <label>Amount ($) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={chargeForm.amount}
+                  onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
+                  disabled={savingCharge}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Entry Date</label>
+                <input
+                  type="date"
+                  value={chargeForm.entry_date}
+                  onChange={(e) => setChargeForm({ ...chargeForm, entry_date: e.target.value })}
+                  disabled={savingCharge}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pet Fee, Late Checkout, GST 5%"
+                  value={chargeForm.description}
+                  onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
+                  disabled={savingCharge}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Staff Member</label>
+                <select
+                  value={chargeForm.staff_member}
+                  onChange={(e) => setChargeForm({ ...chargeForm, staff_member: e.target.value })}
+                  disabled={savingCharge}
+                >
+                  <option value="">Unspecified</option>
+                  {staff.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="detail-field" style={{ marginTop: '12px' }}>
+              <label>Notes</label>
+              <textarea
+                rows={3}
+                maxLength={500}
+                placeholder="Add any notes for this charge..."
+                value={chargeForm.notes}
+                onChange={(e) => setChargeForm({ ...chargeForm, notes: e.target.value })}
+                disabled={savingCharge}
+                className="notes-edit"
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+              <p className="field-hint-text">{(chargeForm.notes || '').length}/500 characters</p>
+            </div>
+
+            <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
+              {savingCharge ? 'Saving...' : 'Save Charge'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* NEW TRANSACTION MODAL */}
+      <PaymentModal
+        isOpen={!!payBooking}
+        onClose={() => { setPayBooking(null); setPayTxns([]); }}
+        booking={payBooking}
+        onPaymentComplete={async () => { await refreshData?.(); setPayBooking(null); setPayTxns([]); }}
+        existingTransactions={payTxns}
+        defaultTransactionType="completion"
+      />
+    </div>
+  );
+};
+
+export default GuestFolio;

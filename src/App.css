@@ -519,6 +519,160 @@ select.prefilled {
 
 .form-section-title { margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.9rem; color: var(--primary); }
 
+/* Guest Folio status tabs */
+.folio-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 14px;
+}
+.folio-tab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.folio-tab:hover { background: #f8fafc; }
+.folio-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* Guest Folio search */
+.folio-search {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 14px;
+}
+
+/* Details modal body + field grid */
+.folio-detail-body {
+  padding: 4px 2px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.detail-section-title {
+  margin: 18px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--primary);
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.detail-field label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+}
+.detail-field input,
+.detail-field select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.detail-field input:disabled,
+.detail-field select:disabled {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* Soft green highlight for edited fields (border-green-500 / bg-green-50 equivalent) */
+.input-edited,
+input.input-edited,
+select.input-edited,
+textarea.input-edited {
+  border: 1px solid #22c55e !important;
+  background: #f0fdf4 !important;
+}
+
+.notes-edit {
+  white-space: pre-line;
+  line-height: 1.5;
+  font-size: 0.85rem;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Folio entries ledger card */
+.ledger-card {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: #fff;
+}
+.ledger-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.ledger-summary {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.ledger-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  padding: 4px 2px;
+  color: #475569;
+}
+.ledger-summary-row.total {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #0f172a;
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.ledger-summary-row .debt { color: #ef4444; font-weight: 700; }
+.ledger-summary-row .clear { color: #10b981; font-weight: 700; }
+.notes-cell {
+  white-space: pre-line;
+  max-width: 220px;
+}
+
+/* Scrollable transaction ledger inside Details */
+.txn-ledger-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.txn-ledger-table {
+  margin: 0;
+}
+.txn-ledger-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+}
+
 /* Compact table action buttons */
 .tool-btn.sm {
   padding: 6px 12px;

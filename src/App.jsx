@@ -3,8 +3,9 @@ import { supabase } from './lib/supabase';
 import Sidebar from './Sidebar';
 import './App.css';
 import WalkInModal from './WalkInModal';
-import PaymentModal from './PaymentModal';
 import CheckInModal from './CheckInModal';
+import GuestFolio from './components/GuestFolio';
+import { STAFF_MEMBERS } from './lib/constants';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './Login';
@@ -18,7 +19,6 @@ function App() {
   const [currentTab, setCurrentTab] = useState('In-House');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedFolioId, setSelectedFolioId] = useState(null);
-  const activeFolio = bookings.find(b => b.booking_id === selectedFolioId);
   const profileNameByEmail = {
     'reception@grandemountainlodge.com': 'Front Desk',
     'zypeny@gmail.com': 'Ying Zhu',
@@ -27,13 +27,8 @@ function App() {
   const avatarInitial = displayName.charAt(0).toUpperCase();
   const [searchTerm, setSearchTerm] = useState('');
   const [isWalkInOpen, setIsWalkInOpen] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
-  const [selectedPaymentBooking, setSelectedPaymentBooking] = useState(null);
   const [selectedCheckInBooking, setSelectedCheckInBooking] = useState(null);
-  const [paymentModalContext, setPaymentModalContext] = useState(null); // 'checkin' | 'payment' | null
-  const [folioTransactions, setFolioTransactions] = useState([]);
-  const [paymentTransactions, setPaymentTransactions] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]);
   const [message, setMessage] = useState('');
   const [arrivalDate, setArrivalDate] = useState(new Date().toISOString().split('T')[0]);
@@ -67,27 +62,6 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [message]);
-
-  // Fetch transactions when folio is opened
-  useEffect(() => {
-    const fetchFolioTransactions = async () => {
-      if (selectedFolioId) {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*')
-          .eq('booking_id', selectedFolioId)
-          .order('charged_at', { ascending: true });
-        
-        if (!error && data) {
-          setFolioTransactions(data);
-        }
-      } else {
-        setFolioTransactions([]);
-      }
-    };
-    
-    fetchFolioTransactions();
-  }, [selectedFolioId]);
 
   // Auto-close drawer when tab changes
   useEffect(() => {
@@ -128,20 +102,6 @@ function App() {
         (b.booking_status === 'checked_in' || b.booking_status === 'confirmed')
       ) 
     : null;
-
-  // Maps booking_status_type enum values to human-readable labels for display.
-  const formatBookingStatus = (status) => {
-    const labels = {
-      'pending': 'Pending',
-      'booked': 'Booked',
-      'confirmed': 'Confirmed',
-      'checked_in': 'Checked In',
-      'checked_out': 'Checked Out',
-      'cancelled': 'Cancelled',
-      'no_show': 'No Show',
-    };
-    return labels[status] || status;
-  };
 
   // Primary Status Helper - determines the single primary status for a room.
   // NOTE: compares DB enum values, but RETURNS UI labels (Occupied/Reserved/...).
@@ -221,54 +181,6 @@ function App() {
     setSelectedCheckInBooking(null);
   };
 
-  const handleOpenPaymentModal = async (booking) => {
-    setSelectedPaymentBooking(booking);
-    setPaymentModalContext('payment');
-    // Load this booking's prior transactions so the void dropdown can reference them.
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('booking_id', booking.booking_id)
-      .order('charged_at', { ascending: true });
-    setPaymentTransactions(!error && data ? data : []);
-    setIsPaymentModalOpen(true);
-  };
-
-  const handlePaymentComplete = async (msg) => {
-    setMessage(msg);
-    
-    // If this was a check-in flow, complete the check-in process
-    if (paymentModalContext === 'checkin' && selectedPaymentBooking) {
-      try {
-        // Room -> 'occupied' is synced by the DB trigger off booking_status.
-        await supabase.from('bookings').update({ booking_status: 'checked_in' }).eq('booking_id', selectedPaymentBooking.booking_id);
-        setMessage(`Checked in successfully. ${msg}`);
-      } catch (error) {
-        alert("Check-in failed: " + error.message);
-        return;
-      }
-    }
-    
-    // Refresh bookings and transactions
-    await fetchDashboardData();
-    
-    // Refresh transactions for current folio
-    if (selectedFolioId) {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('booking_id', selectedFolioId)
-        .order('charged_at', { ascending: true });
-      
-      if (!error && data) {
-        setFolioTransactions(data);
-      }
-    }
-    
-    // Reset payment modal context
-    setPaymentModalContext(null);
-  };
-
   const handleCheckOut = async (targetBooking = null) => {
     const bookingToProcess = targetBooking || activeBooking;
     if (!bookingToProcess) return;
@@ -276,6 +188,7 @@ function App() {
     if (balance > 0) {
       alert(`Settlement Required: This guest has an outstanding balance of $${balance.toFixed(2)}. Please record a payment before checking out.`);
       setSelectedFolioId(bookingToProcess.booking_id);
+      setCurrentTab('Guest Folio');
       return;
     }
     try {
@@ -556,48 +469,17 @@ function App() {
                       </div>
                     </div>
                   ) : currentTab === 'Guest Folio' ? (
-                    <div className="folio-view">
-                      <div className="view-header">
-                        <h2>Guest Folios & Ledger</h2>
-                        <div className="pms-stats">
-                          <div className="stat-pill">Receivables: <span style={{color: '#ef4444'}}>${Number(bookings.reduce((acc, b) => acc + parseFloat(calculateOutstandingBalance(b)), 0)).toFixed(2)}</span></div>
-                        </div>
-                      </div>
-                      <table className="pms-table folio-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '150px' }}>Booking Reference</th>
-                            <th>Guest Name</th>
-                            <th style={{ width: '80px' }}>Room</th>
-                            <th style={{ width: '120px' }}>Status</th>
-                            <th style={{ width: '110px' }}>Balance</th>
-                            <th style={{ width: '220px' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {bookings.filter(b => 
-                            `${b.guests?.first_name} ${b.guests?.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            b.rooms?.room_number.toString().includes(searchTerm)
-                          ).map(b => (
-                            <tr key={b.booking_id}>
-                              <td className="folio-number">{b.booking_reference || b.booking_id || 'N/A'}</td>
-                              <td><strong>{b.guests?.first_name} {b.guests?.last_name}</strong></td>
-                              <td>{b.rooms?.room_number}</td>
-                              <td><span className={`status-badge status-${b.booking_status}`}>{formatBookingStatus(b.booking_status)}</span></td>
-                              <td className={`balance-cell ${parseFloat(calculateOutstandingBalance(b)) > 0 ? 'unpaid' : 'paid'}`}>
-                                ${Number(calculateOutstandingBalance(b)).toFixed(2)}
-                              </td>
-                              <td>
-                                <div className="folio-row-actions">
-                                  <button className="tool-btn sm" onClick={() => setSelectedFolioId(b.booking_id)}>Details</button>
-                                  <button className="tool-btn sm primary" onClick={() => handleOpenPaymentModal(b)}>New Transaction</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <GuestFolio
+                      bookings={bookings}
+                      guests={bookings.map(b => b.guests).filter(Boolean)}
+                      rooms={rooms}
+                      transactions={allTransactions}
+                      staffList={STAFF_MEMBERS}
+                      refreshData={fetchDashboardData}
+                      supabase={supabase}
+                      openBookingId={selectedFolioId}
+                      onDetailClose={() => setSelectedFolioId(null)}
+                    />
                   ) : (
                     <>
                       {/* Toolbar for All Rooms tab - shows all buttons, greyed out unless matching room selected */}
@@ -812,85 +694,7 @@ function App() {
                       <div className="detail-section">
                         <h4>Financial Summary</h4>
                         <div className="detail-row"><span className="detail-label">Outstanding Balance</span><span className="detail-value" style={{color: '#ef4444', fontSize: '1.2rem'}}>${Number(calculateOutstandingBalance(activeBooking)).toFixed(2)}</span></div>
-                        <button onClick={() => setSelectedFolioId(activeBooking.booking_id)} className="tool-btn primary" style={{ marginTop: '10px', width: '100%' }}>View Guest Folio</button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* FOLIO MODAL OVERLAY */}
-                  {activeFolio && (
-                    <div className="folio-modal-overlay">
-                      <div className="folio-modal">
-                        <div className="modal-header">
-                          <div>
-                            <h3>{activeFolio.guests?.first_name} {activeFolio.guests?.last_name}</h3>
-                            <p className="folio-subheader">
-                              Booking Reference: <strong>{activeFolio.booking_reference || activeFolio.booking_id || 'N/A'}</strong>
-                              {' '}· Room {activeFolio.rooms?.room_number || 'N/A'}
-                            </p>
-                          </div>
-                          <button onClick={() => setSelectedFolioId(null)} className="close-drawer-btn">✕</button>
-                        </div>
-                        <div className="folio-grid">
-                          <div className="folio-sidebar">
-                            <div className="profile-section">
-                              <label>PROFILE</label>
-                              <div className="profile-data">
-                                Email: {activeFolio.guests?.email} <br/>
-                                Phone: {activeFolio.guests?.phone || 'N/A'} <br/>
-                                Location: {activeFolio.guests?.city || 'Unknown'} <br/>
-                                Occupancy: {activeFolio.adults || 0} Adults, {activeFolio.children || 0} Children <br/>
-                                Pets: {activeFolio.pets || 0} <br/>
-                              </div>
-                            </div>
-                            <div className="profile-section">
-                              <label>STAY</label>
-                              <div className="profile-data">
-                                Room: {activeFolio.rooms?.room_number} <br/>
-                                Check-in: {activeFolio.check_in} <br/>
-                                Check-out: {activeFolio.check_out}
-                              </div>
-                            </div>
-                            <div className="profile-section">
-                              <label>NOTES</label>
-                              <div className="profile-data notes-log">
-                                {activeFolio.booking_notes || 'None'}
-                              </div>
-                            </div>
-                            <div className="profile-section">
-                              <label>GUARANTEE</label>
-                              {activeFolio.guarantee_method ? (
-                                <div className="cc-info-box">
-                                  <i className="fa-solid fa-credit-card"></i> 
-                                  {activeFolio.guarantee_method} •••• {activeFolio.last4 || '----'} <br/>
-                                  Exp: {activeFolio.expiry_month || '--'}/{activeFolio.expiry_year || '----'}
-                                </div>
-                              ) : (
-                                <div className="cc-info-box no-guarantee">No guarantee on file</div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="folio-main">
-                            <label>LEDGER</label>
-                            <div className="ledger-table">
-                              <div className="ledger-row header"><span>Description</span><span>Debit</span><span>Credit</span></div>
-                              <div className="ledger-row"><span>Room Charges</span><span>${Number(calculateTotalBalance(activeFolio)).toFixed(2)}</span><span>-</span></div>
-                              {folioTransactions.map((txn) => (
-                                <div key={txn.transaction_id} className="ledger-row" style={{color: '#10b981'}}>
-                                  <span>Payment - {txn.transaction_type} ({txn.payment_method}){txn.transaction_notes ? ` — ${txn.transaction_notes}` : ''}</span>
-                                  <span>-</span>
-                                  <span>${Number(txn.amount).toFixed(2)}</span>
-                                </div>
-                              ))}
-                              <div className="ledger-total">
-                                <span>OUTSTANDING BALANCE</span>
-                                <span className={Number(calculateOutstandingBalance(activeFolio)) > 0 ? 'debt' : 'clear'}>
-                                  ${Number(calculateOutstandingBalance(activeFolio)).toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <button onClick={() => { setSelectedFolioId(activeBooking.booking_id); setCurrentTab('Guest Folio'); }} className="tool-btn primary" style={{ marginTop: '10px', width: '100%' }}>View Guest Folio</button>
                       </div>
                     </div>
                   )}
@@ -904,19 +708,6 @@ function App() {
                     }} 
                     booking={selectedCheckInBooking}
                     onCheckInComplete={handleCheckInComplete}
-                  />
-                  <PaymentModal 
-                    isOpen={isPaymentModalOpen} 
-                    onClose={() => {
-                      setIsPaymentModalOpen(false);
-                      setSelectedPaymentBooking(null);
-                      setPaymentModalContext(null);
-                      setPaymentTransactions([]);
-                    }} 
-                    booking={selectedPaymentBooking}
-                    onPaymentComplete={handlePaymentComplete}
-                    defaultTransactionType={paymentModalContext === 'checkin' ? 'pre_auth' : 'completion'}
-                    existingTransactions={paymentTransactions}
                   />
                   {message && <div className="toast-notification">{message}</div>}
                 </main>
