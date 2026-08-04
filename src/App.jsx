@@ -33,11 +33,11 @@ function App() {
   const [selectedCheckInBooking, setSelectedCheckInBooking] = useState(null);
   const [paymentModalContext, setPaymentModalContext] = useState(null); // 'checkin' | 'payment' | null
   const [folioTransactions, setFolioTransactions] = useState([]);
+  const [paymentTransactions, setPaymentTransactions] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]);
   const [message, setMessage] = useState('');
   const [arrivalDate, setArrivalDate] = useState(new Date().toISOString().split('T')[0]);
   const [departureDate, setDepartureDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentAmount, setPaymentAmount] = useState('');
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -221,17 +221,16 @@ function App() {
     setSelectedCheckInBooking(null);
   };
 
-  const handlePostPayment = async (bookingId, currentPaid, amount) => {
-    const finalAmount = amount || paymentAmount;
-    if (!finalAmount || isNaN(finalAmount)) return alert("Enter a valid numeric amount.");
-    const newTotal = parseFloat(currentPaid || 0) + parseFloat(finalAmount);
-    const { error } = await supabase.from('bookings').update({ amount_paid: newTotal }).eq('booking_id', bookingId);
-    if (!error) { setMessage(`Payment recorded.`); setPaymentAmount(''); fetchDashboardData(); }
-  };
-
-  const handleOpenPaymentModal = (booking) => {
+  const handleOpenPaymentModal = async (booking) => {
     setSelectedPaymentBooking(booking);
     setPaymentModalContext('payment');
+    // Load this booking's prior transactions so the void dropdown can reference them.
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('booking_id', booking.booking_id)
+      .order('charged_at', { ascending: true });
+    setPaymentTransactions(!error && data ? data : []);
     setIsPaymentModalOpen(true);
   };
 
@@ -564,15 +563,15 @@ function App() {
                           <div className="stat-pill">Receivables: <span style={{color: '#ef4444'}}>${Number(bookings.reduce((acc, b) => acc + parseFloat(calculateOutstandingBalance(b)), 0)).toFixed(2)}</span></div>
                         </div>
                       </div>
-                      <table className="pms-table">
+                      <table className="pms-table folio-table">
                         <thead>
                           <tr>
-                            <th>Booking Reference</th>
+                            <th style={{ width: '150px' }}>Booking Reference</th>
                             <th>Guest Name</th>
-                            <th>Room</th>
-                            <th>Status</th>
-                            <th>Balance</th>
-                            <th>Actions</th>
+                            <th style={{ width: '80px' }}>Room</th>
+                            <th style={{ width: '120px' }}>Status</th>
+                            <th style={{ width: '110px' }}>Balance</th>
+                            <th style={{ width: '220px' }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -588,7 +587,12 @@ function App() {
                               <td className={`balance-cell ${parseFloat(calculateOutstandingBalance(b)) > 0 ? 'unpaid' : 'paid'}`}>
                                 ${Number(calculateOutstandingBalance(b)).toFixed(2)}
                               </td>
-                              <td><button className="tool-btn sm" onClick={() => setSelectedFolioId(b.booking_id)}>Details</button></td>
+                              <td>
+                                <div className="folio-row-actions">
+                                  <button className="tool-btn sm" onClick={() => setSelectedFolioId(b.booking_id)}>Details</button>
+                                  <button className="tool-btn sm primary" onClick={() => handleOpenPaymentModal(b)}>New Transaction</button>
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -849,7 +853,7 @@ function App() {
                             </div>
                             <div className="profile-section">
                               <label>NOTES</label>
-                              <div className="profile-data">
+                              <div className="profile-data notes-log">
                                 {activeFolio.booking_notes || 'None'}
                               </div>
                             </div>
@@ -885,9 +889,6 @@ function App() {
                                 </span>
                               </div>
                             </div>
-                            <div className="folio-actions" style={{marginTop: '15px'}}>
-                              <button onClick={() => handleOpenPaymentModal(activeFolio)} className="tool-btn primary">Post Payment</button>
-                            </div>
                           </div>
                         </div>
                       </div>
@@ -910,10 +911,12 @@ function App() {
                       setIsPaymentModalOpen(false);
                       setSelectedPaymentBooking(null);
                       setPaymentModalContext(null);
+                      setPaymentTransactions([]);
                     }} 
                     booking={selectedPaymentBooking}
                     onPaymentComplete={handlePaymentComplete}
                     defaultTransactionType={paymentModalContext === 'checkin' ? 'pre_auth' : 'completion'}
+                    existingTransactions={paymentTransactions}
                   />
                   {message && <div className="toast-notification">{message}</div>}
                 </main>

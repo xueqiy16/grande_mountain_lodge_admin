@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
+import { buildNoteHeader, appendNote } from './lib/notes';
 
 // Fresh blank reservation state (check_in defaults to today each time it's built).
 // transaction_type defaults to pre_auth (guest starting a stay); staff can switch
@@ -141,9 +142,11 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     };
 
     const bookingReference = generateCode('BK');
-    // Free-text stay note; stored on the bookings row (booking_notes), not the
-    // initial purchase transaction.
-    const bookingNotes = formData.notes.trim() || null;
+    // Free-text stay note; stored on the bookings row (booking_notes) with a
+    // staff-attributed, timestamped header. New booking => no prior notes to append.
+    const bookingNotes = formData.notes.trim()
+      ? appendNote('', buildNoteHeader('Booking', formData.staff_member), formData.notes)
+      : null;
     // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
 
@@ -179,8 +182,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         pets: Number(formData.pets) || 0,
         total_nights: totalNights,
         total_price: totalPrice,
-        // Save exactly what staff collected (supports full, partial, deposit, or none).
-        amount_paid: amountPaid,
+        // amount_paid is owned by the tr_update_amount_paid trigger, which recomputes
+        // it from the transactions ledger (type-aware). Seed 0; the transaction insert
+        // below fires the trigger and sets the true value.
+        amount_paid: 0,
         booking_status: finalStatus,
         booking_reference: bookingReference,
         booking_notes: bookingNotes

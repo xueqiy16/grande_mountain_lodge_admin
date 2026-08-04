@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
+import { buildNoteHeader, appendNote } from './lib/notes';
 
 // Blank slate used on close; the form is re-populated from the booking on open.
 const getBlankFormData = () => ({
@@ -79,7 +80,9 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         amount_paid: '',
         staff_member: '',
         transaction_type: 'pre_auth',
-        notes: booking.booking_notes || ''
+        // Notes textarea is for a NEW entry; existing history is shown read-only
+        // and preserved via append-on-save (never overwritten).
+        notes: ''
       });
     }
   }, [isOpen, booking]);
@@ -155,8 +158,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     const nightlyRate = Number(selectedRoomType?.nightly_rate || 0);
     const totalPrice = Number((totalNights * nightlyRate).toFixed(2));
 
-    // Free-text stay note -> bookings.booking_notes (never payment details).
-    const bookingNotes = formData.notes.trim() || null;
+    // Append the new staff note to the existing booking_notes log (never overwrite).
+    // If no new note is entered, the existing history is preserved unchanged.
+    const newNote = formData.notes.trim();
+    const bookingNotes = newNote
+      ? appendNote(booking.booking_notes, buildNoteHeader('Check-In', formData.staff_member), newNote)
+      : (booking.booking_notes || null);
     // Payment details live on the transactions row.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
     const cardHolderName = requiresCardDetails
@@ -194,7 +201,8 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           pets: Number(formData.pets) || 0,
           total_nights: totalNights,
           total_price: totalPrice,
-          amount_paid: amountPaid,
+          // amount_paid is owned by tr_update_amount_paid (recomputed from the
+          // transactions ledger); do not write it here to avoid racing the trigger.
           booking_status: 'checked_in',
           booking_notes: bookingNotes
         })
@@ -475,18 +483,24 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           </div>
 
           <div className="form-section-title">Notes</div>
+          {booking?.booking_notes && (
+            <div className="form-group">
+              <label>Existing Notes</label>
+              <div className="notes-log">{booking.booking_notes}</div>
+            </div>
+          )}
           <div className="form-group">
+            <label>Add Note</label>
             <textarea
-              className={booking?.booking_notes ? 'prefilled' : ''}
               rows={3}
               maxLength={500}
-              placeholder="Add any arrival or special request notes here..."
+              placeholder="Add a new arrival or special request note here..."
               value={formData.notes}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
               disabled={isProcessing}
               style={{ resize: 'vertical', width: '100%' }}
             />
-            <p className="field-hint-text">{formData.notes.length}/500 characters</p>
+            <p className="field-hint-text">{formData.notes.length}/500 characters — appended to the note log with your name and timestamp.</p>
           </div>
 
           <button type="submit" className="tool-btn primary" style={{ width: '100%', marginTop: '20px' }} disabled={isProcessing}>

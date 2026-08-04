@@ -519,6 +519,71 @@ select.prefilled {
 
 .form-section-title { margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.9rem; color: var(--primary); }
 
+/* Compact table action buttons */
+.tool-btn.sm {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+.folio-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+/* Guest Folio table: fixed layout so tightened column widths are respected. */
+.folio-table {
+  table-layout: fixed;
+}
+.folio-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* New Transaction modal: read-only financial summary header */
+.txn-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.txn-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.txn-summary-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+}
+.txn-summary-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Append-only staff note log: preserve line breaks and section dividers. */
+.notes-log {
+  white-space: pre-line;
+  line-height: 1.5;
+  font-size: 0.85rem;
+  color: #334155;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
 /* Toast Notifications */
 .toast-notification {
   position: fixed;
