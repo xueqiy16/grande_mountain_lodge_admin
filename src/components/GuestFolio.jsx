@@ -73,6 +73,15 @@ const calculateOutstandingBalance = (b) => {
   return total - Number(b?.amount_paid || 0);
 };
 
+// Word-prefix name matching: a query matches when it prefixes the first name,
+// the last name, or the combined "first last" full name (all normalized).
+const guestNameMatches = (guest, q) => {
+  const firstName = (guest?.first_name || '').trim().toLowerCase();
+  const lastName = (guest?.last_name || '').trim().toLowerCase();
+  const fullName = `${firstName} ${lastName}`.trim();
+  return firstName.startsWith(q) || lastName.startsWith(q) || fullName.startsWith(q);
+};
+
 // Green highlight when a draft value diverges from the original (edit feedback).
 const editedClass = (draftVal, originalVal) =>
   String(draftVal ?? '') !== String(originalVal ?? '') ? 'input-edited' : '';
@@ -150,12 +159,15 @@ const GuestFolio = ({
       if (!q) return true;
       const g = resolveGuest(b);
       const r = resolveRoom(b);
-      const haystack = [
-        g.first_name, g.last_name, g.phone, g.email,
+      // Names are matched by word-prefix (start of first/last/full name).
+      if (guestNameMatches(g, q)) return true;
+      // Non-name fields keep substring (includes) matching as a fallback.
+      const fallback = [
+        g.phone, g.email,
         r.room_number, r.code, r.room_types?.code,
         b.check_in, b.check_out
       ].map(x => String(x ?? '').toLowerCase());
-      return haystack.some(h => h.includes(q));
+      return fallback.some(h => h.includes(q));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, activeTab, search, guests, rooms]);
