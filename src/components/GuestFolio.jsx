@@ -73,15 +73,6 @@ const calculateOutstandingBalance = (b) => {
   return total - Number(b?.amount_paid || 0);
 };
 
-// Word-prefix name matching: a query matches when it prefixes the first name,
-// the last name, or the combined "first last" full name (all normalized).
-const guestNameMatches = (guest, q) => {
-  const firstName = (guest?.first_name || '').trim().toLowerCase();
-  const lastName = (guest?.last_name || '').trim().toLowerCase();
-  const fullName = `${firstName} ${lastName}`.trim();
-  return firstName.startsWith(q) || lastName.startsWith(q) || fullName.startsWith(q);
-};
-
 // Green highlight when a draft value diverges from the original (edit feedback).
 const editedClass = (draftVal, originalVal) =>
   String(draftVal ?? '') !== String(originalVal ?? '') ? 'input-edited' : '';
@@ -154,20 +145,35 @@ const GuestFolio = ({
 
   const filteredBookings = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const cleanQueryPhone = q.replace(/\D/g, '');
     return bookings.filter(b => {
       if (activeTab !== 'all' && b?.booking_status !== activeTab) return false;
       if (!q) return true;
       const g = resolveGuest(b);
       const r = resolveRoom(b);
-      // Names are matched by word-prefix (start of first/last/full name).
-      if (guestNameMatches(g, q)) return true;
-      // Non-name fields keep substring (includes) matching as a fallback.
-      const fallback = [
-        g.phone, g.email,
-        r.room_number, r.code, r.room_types?.code,
-        b.check_in, b.check_out
-      ].map(x => String(x ?? '').toLowerCase());
-      return fallback.some(h => h.includes(q));
+
+      const firstName = (g?.first_name || '').trim().toLowerCase();
+      const lastName = (g?.last_name || '').trim().toLowerCase();
+      const fullName = `${firstName} ${lastName}`.trim();
+      const email = (g?.email || '').trim().toLowerCase();
+      const phone = (g?.phone || '').replace(/\D/g, ''); // digits only for clean phone checks
+      const roomNumber = String(r?.room_number ?? '').trim().toLowerCase();
+      const roomCode = (r?.code || r?.room_types?.code || '').trim().toLowerCase();
+      const checkIn = (b?.check_in || '').trim().toLowerCase();
+      const checkOut = (b?.check_out || '').trim().toLowerCase();
+
+      // Strict prefix matching only — no mid-string (includes) matches anywhere.
+      return (
+        firstName.startsWith(q) ||
+        lastName.startsWith(q) ||
+        fullName.startsWith(q) ||
+        email.startsWith(q) ||
+        (cleanQueryPhone.length > 0 && phone.startsWith(cleanQueryPhone)) ||
+        roomNumber.startsWith(q) ||
+        roomCode.startsWith(q) ||
+        checkIn.startsWith(q) ||
+        checkOut.startsWith(q)
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, activeTab, search, guests, rooms]);
