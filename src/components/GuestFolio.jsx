@@ -162,6 +162,14 @@ const GuestFolio = ({
       const checkIn = (b?.check_in || '').trim().toLowerCase();
       const checkOut = (b?.check_out || '').trim().toLowerCase();
 
+      // Date-range matching: when q is a full YYYY-MM-DD, the booking also matches
+      // if that date falls within the stay window [check_in, check_out]. YYYY-MM-DD
+      // strings compare correctly lexicographically. Partial dates keep prefix rules.
+      const ciDate = checkIn.slice(0, 10);
+      const coDate = checkOut.slice(0, 10);
+      const isFullDate = /^\d{4}-\d{2}-\d{2}$/.test(q);
+      const dateInRange = isFullDate && ciDate && coDate && q >= ciDate && q <= coDate;
+
       // Strict prefix matching only — no mid-string (includes) matches anywhere.
       return (
         firstName.startsWith(q) ||
@@ -172,7 +180,8 @@ const GuestFolio = ({
         roomNumber.startsWith(q) ||
         roomCode.startsWith(q) ||
         checkIn.startsWith(q) ||
-        checkOut.startsWith(q)
+        checkOut.startsWith(q) ||
+        dateInRange
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,7 +422,7 @@ const GuestFolio = ({
       <input
         type="text"
         className="folio-search"
-        placeholder="Search by name, phone, email, room, or stay dates..."
+        placeholder="Search by name, phone, email, room, or stay date (YYYY-MM-DD)..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
