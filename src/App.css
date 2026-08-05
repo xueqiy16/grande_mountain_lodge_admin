@@ -460,7 +460,41 @@ body {
   max-width: 500px;
 }
 
-.walkin-modal-wide { max-width: 800px !important; }
+/* New Walk In modal: centered with viewport margins, sticky header/footer,
+   and a single scrollable body (no horizontal scroll). */
+.walkin-modal-wide {
+  max-width: 800px !important;
+  padding: 0 !important;
+  max-height: 85vh;
+  margin: 2rem auto;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.walkin-modal-wide .modal-header {
+  padding: 1rem 2rem;
+  border-radius: 12px 12px 0 0;
+}
+.walkin-modal-wide .walkin-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.walkin-form-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1.5rem 2rem;
+}
+.walkin-form-footer {
+  padding: 1rem 2rem;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+
 .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
 
 .walkin-form label { display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
@@ -556,9 +590,11 @@ select.prefilled {
 
 /* Details modal body + field grid */
 .folio-detail-body {
-  padding: 4px 2px;
-  max-height: 70vh;
+  flex: 1;
+  min-height: 0;
+  padding: 1.5rem 2rem;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .detail-section-title {
   margin: 18px 0 10px;
@@ -571,7 +607,7 @@ select.prefilled {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 12px 16px;
 }
 .detail-field {
   display: flex;
@@ -833,9 +869,17 @@ textarea.input-edited {
   background: white;
   width: 90%;
   max-width: 800px;
+  max-height: 85vh;
   border-radius: 12px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.folio-modal .modal-header {
+  padding: 1rem 2rem;
+  flex-shrink: 0;
 }
 
 .modal-header {

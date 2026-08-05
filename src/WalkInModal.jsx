@@ -245,6 +245,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         </div>
         
         <form onSubmit={handleSubmit} className="walkin-form">
+          <div className="walkin-form-body">
           <div className="form-section" style={{ marginBottom: '20px' }}>
             <label>1. Select Room Category</label>
             <select
@@ -456,10 +457,13 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
             />
             <p className="field-hint-text">{formData.notes.length}/500 characters</p>
           </div>
+          </div>
 
-          <button type="submit" className="tool-btn primary" style={{ width: '100%', marginTop: '20px' }} disabled={isSubmitting}>
-            {isSubmitting ? 'Processing...' : 'Complete Reservation'}
-          </button>
+          <div className="walkin-form-footer">
+            <button type="submit" className="tool-btn primary" style={{ width: '100%' }} disabled={isSubmitting}>
+              {isSubmitting ? 'Processing...' : 'Complete Reservation'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
