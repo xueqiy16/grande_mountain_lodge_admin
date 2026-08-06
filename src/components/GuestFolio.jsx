@@ -16,8 +16,10 @@ const BOOKING_STATUS_OPTIONS = ['confirmed', 'checked_in', 'checked_out', 'cance
 
 // folio_entries enums (exact DB values).
 const ENTRY_TYPES = ['room_charge', 'tax', 'damage', 'fee', 'discount', 'extra_night', 'tip', 'other'];
-// Taxes are auto-calculated, so staff cannot manually add a 'tax' charge from the UI.
-const CHARGE_TYPE_OPTIONS = ENTRY_TYPES.filter(t => t !== 'tax');
+// Manual charge types staff can pick in the Add Charge modal. Excludes 'room_charge'
+// (auto base stay entry) and 'tax' (auto-calculated). 'room_charge'/'tax' remain valid
+// folio_entry_type enum values in the DB — they're just hidden from this picker.
+const CHARGE_TYPE_OPTIONS = ['damage', 'extra_night', 'fee', 'tip', 'discount', 'other'];
 // Everything except discount is a positive charge (debit); discount is a credit.
 const isDebitEntry = (type) => type !== 'discount';
 // Extra charges layered on top of the base room charge (excludes room_charge, tax, discount).
@@ -131,7 +133,7 @@ const GuestFolio = ({
   const [addChargeOpen, setAddChargeOpen] = useState(false);
   const [savingCharge, setSavingCharge] = useState(false);
   const blankCharge = {
-    entry_type: '',
+    entry_type: CHARGE_TYPE_OPTIONS[0],
     amount: '',
     description: '',
     staff_member: '',
@@ -908,7 +910,6 @@ const GuestFolio = ({
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_type: e.target.value })}
                   disabled={savingCharge}
                 >
-                  <option value="">Select charge type...</option>
                   {CHARGE_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
