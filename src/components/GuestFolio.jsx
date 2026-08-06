@@ -240,11 +240,17 @@ const GuestFolio = ({
 
   // Live pricing. In edit mode the base charge tracks the draft dates so the
   // read-only Total Nights / Total Price reflect the pending change immediately.
-  const nightlyRate = Number(resolveRoom(detailBooking).room_types?.nightly_rate || 0);
+  // Resolve nightly_rate strictly through the room relationship: rooms -> room_types.
+  const roomType = resolveRoom(detailBooking).room_types || {};
+  const nightlyRate = Number(roomType.nightly_rate || 0);
   const effCheckIn = isEditing ? bookingDraft.check_in : detailBooking?.check_in;
   const effCheckOut = isEditing ? bookingDraft.check_out : detailBooking?.check_out;
-  const liveNights = nightsBetween(effCheckIn, effCheckOut);
-  const baseRoomCharge = liveNights * nightlyRate;
+  // Nights basis: stored booking.total_nights in view mode; live date math while editing.
+  const liveNights = isEditing
+    ? nightsBetween(effCheckIn, effCheckOut)
+    : (Number(detailBooking?.total_nights) || nightsBetween(effCheckIn, effCheckOut));
+  // baseRoomCharge = (roomType.nightly_rate || 0) * total_nights. Taxes apply to this only.
+  const baseRoomCharge = nightlyRate * liveNights;
   const additionalCharges = sumEntries(folioEntries, e => ADDITIONAL_CHARGE_TYPES.includes(e.entry_type));
   const sumDiscounts = sumEntries(folioEntries, e => e.entry_type === 'discount');
   const { gst: gstAmount, tourismLevy: tourismLevyAmount } = computeTaxes(baseRoomCharge, liveNights);
