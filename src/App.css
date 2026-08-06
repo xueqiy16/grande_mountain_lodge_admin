@@ -747,6 +747,16 @@ textarea.input-edited {
   font-weight: 700;
   color: #64748b;
 }
+/* Compact ledger cells to free room for the Actions column. */
+.ledger-compact td,
+.ledger-compact th {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.ledger-compact .tool-btn.sm {
+  padding: 2px 8px;
+  font-size: 0.72rem;
+}
 
 /* Add Charge sub-modal: contained, scrollable body with generous padding. */
 .add-charge-modal {

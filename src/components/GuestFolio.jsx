@@ -132,6 +132,10 @@ const GuestFolio = ({
   const [folioEntries, setFolioEntries] = useState([]);
   const [addChargeOpen, setAddChargeOpen] = useState(false);
   const [savingCharge, setSavingCharge] = useState(false);
+  // Edit mode: folio_entry_id being edited (null = add). chargeOriginal drives the
+  // green "modified field" highlight by comparing against the pre-populated values.
+  const [editingChargeId, setEditingChargeId] = useState(null);
+  const [chargeOriginal, setChargeOriginal] = useState(null);
   const blankCharge = {
     entry_type: CHARGE_TYPE_OPTIONS[0],
     amount: '',
@@ -382,7 +386,24 @@ const GuestFolio = ({
   };
 
   const openAddCharge = () => {
+    setEditingChargeId(null);
+    setChargeOriginal(null);
     setChargeForm({ ...blankCharge, entry_date: todayISODate() });
+    setAddChargeOpen(true);
+  };
+
+  const openEditCharge = (entry) => {
+    const prefilled = {
+      entry_type: entry.entry_type || CHARGE_TYPE_OPTIONS[0],
+      amount: String(entry.amount ?? ''),
+      description: entry.description || '',
+      staff_member: entry.staff_member || '',
+      notes: entry.notes || '',
+      entry_date: (entry.entry_date || '').slice(0, 10) || todayISODate()
+    };
+    setEditingChargeId(entry.folio_entry_id);
+    setChargeOriginal(prefilled);
+    setChargeForm(prefilled);
     setAddChargeOpen(true);
   };
 
@@ -394,8 +415,7 @@ const GuestFolio = ({
 
     setSavingCharge(true);
     try {
-      const payload = {
-        booking_id: detailBooking.booking_id,
+      const fields = {
         entry_type: chargeForm.entry_type,
         tax_type: null,
         amount,
@@ -405,11 +425,27 @@ const GuestFolio = ({
         entry_date: chargeForm.entry_date || todayISODate()
       };
 
-      const { data, error } = await supabase.from('folio_entries').insert([payload]).select();
-      if (error) throw error;
+      let newEntries;
+      if (editingChargeId) {
+        // Update the existing row in place.
+        const { error } = await supabase
+          .from('folio_entries')
+          .update(fields)
+          .eq('folio_entry_id', editingChargeId);
+        if (error) throw error;
+        newEntries = folioEntries.map(e =>
+          e.folio_entry_id === editingChargeId ? { ...e, ...fields } : e
+        );
+      } else {
+        const { data, error } = await supabase
+          .from('folio_entries')
+          .insert([{ booking_id: detailBooking.booking_id, ...fields }])
+          .select();
+        if (error) throw error;
+        newEntries = [...folioEntries, ...(data && data.length ? data : [fields])];
+      }
 
-      // Recalculate total_price = base + Σ(debits) − Σ(discounts) including the new entry.
-      const newEntries = [...folioEntries, ...(data && data.length ? data : [payload])];
+      // Recalculate total_price = base + Σ(additional) + GST + Levy − Σ(discounts).
       const newTotalPrice = Number(computeTotalPrice(baseRoomCharge, newEntries, liveNights).toFixed(2));
       const { error: bErr } = await supabase
         .from('bookings')
@@ -420,8 +456,10 @@ const GuestFolio = ({
       await fetchFolioEntries(detailBooking.booking_id);
       await refreshData?.();
       setAddChargeOpen(false);
+      setEditingChargeId(null);
+      setChargeOriginal(null);
     } catch (e) {
-      alert('Add charge failed: ' + e.message);
+      alert((editingChargeId ? 'Edit charge failed: ' : 'Add charge failed: ') + e.message);
     } finally {
       setSavingCharge(false);
     }
@@ -706,24 +744,26 @@ const GuestFolio = ({
                   <button className="tool-btn sm primary" onClick={openAddCharge}>+ Add Charge</button>
                 </div>
                 <div className="txn-ledger-scroll">
-                  <table className="pms-table txn-ledger-table">
+                  <table className="pms-table txn-ledger-table ledger-compact">
                     <thead>
                       <tr>
-                        <th style={{ width: '90px' }}>Date</th>
-                        <th style={{ width: '110px' }}>Type</th>
+                        <th style={{ width: '78px' }}>Date</th>
+                        <th style={{ width: '92px' }}>Type</th>
                         <th>Description</th>
-                        <th style={{ width: '90px' }}>Amount</th>
-                        <th style={{ width: '130px' }}>Staff</th>
+                        <th style={{ width: '78px' }}>Amount</th>
+                        <th style={{ width: '110px' }}>Staff</th>
                         <th>Notes</th>
+                        <th style={{ width: '58px' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {/* Derived base room charge line (nightly_rate × nights) */}
+                      {/* Derived base room charge line (nightly_rate × nights) — system row, no edit. */}
                       <tr>
                         <td>{formatEntryDate(effCheckIn)}</td>
                         <td>room_charge</td>
                         <td>Base Room Charge ({liveNights} night{liveNights === 1 ? '' : 's'} × ${nightlyRate.toFixed(2)})</td>
                         <td>${baseRoomCharge.toFixed(2)}</td>
+                        <td>-</td>
                         <td>-</td>
                         <td>-</td>
                       </tr>
@@ -740,6 +780,15 @@ const GuestFolio = ({
                             </td>
                             <td>{e.staff_member || '-'}</td>
                             <td className="notes-cell">{e.notes || '-'}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="tool-btn sm"
+                                onClick={() => openEditCharge(e)}
+                              >
+                                Edit
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -896,7 +945,7 @@ const GuestFolio = ({
         <div className="modal-overlay" onClick={() => !savingCharge && setAddChargeOpen(false)}>
           <div className="modal-content add-charge-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Add Charge</h3>
+              <h3>{editingChargeId ? 'Edit Charge' : 'Add Charge'}</h3>
               <button onClick={() => !savingCharge && setAddChargeOpen(false)} className="close-drawer-btn">✕</button>
             </div>
 
@@ -909,6 +958,7 @@ const GuestFolio = ({
                   value={chargeForm.entry_type}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_type: e.target.value })}
                   disabled={savingCharge}
+                  className={chargeOriginal ? editedClass(chargeForm.entry_type, chargeOriginal.entry_type) : ''}
                 >
                   {CHARGE_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
@@ -922,6 +972,7 @@ const GuestFolio = ({
                   value={chargeForm.amount}
                   onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
                   disabled={savingCharge}
+                  className={chargeOriginal ? editedClass(chargeForm.amount, chargeOriginal.amount) : ''}
                 />
               </div>
 
@@ -933,6 +984,7 @@ const GuestFolio = ({
                   value={chargeForm.entry_date}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_date: e.target.value })}
                   disabled={savingCharge}
+                  className={chargeOriginal ? editedClass(chargeForm.entry_date, chargeOriginal.entry_date) : ''}
                 />
               </div>
               <div className="detail-field">
@@ -941,6 +993,7 @@ const GuestFolio = ({
                   value={chargeForm.staff_member}
                   onChange={(e) => setChargeForm({ ...chargeForm, staff_member: e.target.value })}
                   disabled={savingCharge}
+                  className={chargeOriginal ? editedClass(chargeForm.staff_member, chargeOriginal.staff_member) : ''}
                 >
                   <option value="">Unspecified</option>
                   {staff.map(name => <option key={name} value={name}>{name}</option>)}
@@ -956,6 +1009,7 @@ const GuestFolio = ({
                   value={chargeForm.description}
                   onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
                   disabled={savingCharge}
+                  className={chargeOriginal ? editedClass(chargeForm.description, chargeOriginal.description) : ''}
                 />
               </div>
 
@@ -969,7 +1023,7 @@ const GuestFolio = ({
                   value={chargeForm.notes}
                   onChange={(e) => setChargeForm({ ...chargeForm, notes: e.target.value })}
                   disabled={savingCharge}
-                  className="notes-edit"
+                  className={`notes-edit ${chargeOriginal ? editedClass(chargeForm.notes, chargeOriginal.notes) : ''}`}
                   style={{ width: '100%', resize: 'vertical' }}
                 />
                 <p className="field-hint-text">{(chargeForm.notes || '').length}/500 characters</p>
@@ -977,7 +1031,7 @@ const GuestFolio = ({
             </div>
 
             <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
-              {savingCharge ? 'Saving...' : 'Save Charge'}
+              {savingCharge ? 'Saving...' : (editingChargeId ? 'Save Changes' : 'Save Charge')}
             </button>
             </div>
           </div>
