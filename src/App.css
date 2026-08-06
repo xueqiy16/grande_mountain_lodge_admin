@@ -495,10 +495,26 @@ body {
   background: #fff;
 }
 
-.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; column-gap: 16px; row-gap: 16px; margin-bottom: 16px; }
 
 .walkin-form label { display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 5px; }
-.walkin-form input, .walkin-form select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; }
+.walkin-form input, .walkin-form select, .walkin-form textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; }
+
+/* Border-box so width:100% inputs stay inside their grid cell and never
+   overflow into (and overlap) the column gap. */
+.walkin-form input,
+.walkin-form select,
+.walkin-form textarea,
+.detail-field input,
+.detail-field select,
+.detail-field textarea,
+.notes-edit {
+  box-sizing: border-box;
+}
+
+/* Vertical breathing room for every form group / row. */
+.walkin-form .form-group { margin-bottom: 4px; }
+.walkin-form .form-section { margin-bottom: 16px; }
 
 /* Material-style inline validation error */
 .walkin-form select.input-error,
@@ -607,7 +623,8 @@ select.prefilled {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px 16px;
+  column-gap: 16px;
+  row-gap: 16px;
 }
 .detail-field {
   display: flex;
