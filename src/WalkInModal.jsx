@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
-import { buildNoteHeader, appendNote } from './lib/notes';
-
 // Fresh blank reservation state (check_in defaults to today each time it's built).
 // transaction_type defaults to pre_auth (guest starting a stay); staff can switch
 // to purchase when charging the full amount up front.
@@ -142,11 +140,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     };
 
     const bookingReference = generateCode('BK');
-    // Free-text stay note; stored on the bookings row (booking_notes) with a
-    // staff-attributed, timestamped header. New booking => no prior notes to append.
-    const bookingNotes = formData.notes.trim()
-      ? appendNote('', buildNoteHeader('Booking', formData.staff_member), formData.notes)
-      : null;
+    // Free-text stay note stored verbatim on bookings.booking_notes (no headers/append).
+    const bookingNotes = formData.notes.trim() ? formData.notes : null;
     // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
 

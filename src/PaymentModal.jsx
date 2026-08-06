@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
-import { buildNoteHeader, appendNote } from './lib/notes';
-
 const PaymentModal = ({
   isOpen,
   onClose,
@@ -99,11 +97,8 @@ const PaymentModal = ({
       return;
     }
 
-    // transaction_notes: prefix a staff-attributed, timestamped header.
-    const noteText = formData.transaction_notes.trim();
-    const transactionNotes = noteText
-      ? appendNote('', buildNoteHeader('Transaction', formData.staff_member), noteText)
-      : null;
+    // transaction_notes stored verbatim (no headers/append).
+    const transactionNotes = formData.transaction_notes.trim() ? formData.transaction_notes : null;
 
     setIsProcessing(true);
 
