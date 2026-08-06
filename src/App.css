@@ -705,6 +705,16 @@ textarea.input-edited {
 }
 .ledger-summary-row .debt { color: #ef4444; font-weight: 700; }
 .ledger-summary-row .clear { color: #10b981; font-weight: 700; }
+/* Credits (discounts / payments) shown in muted green. */
+.ledger-summary-row .credit { color: #059669; }
+/* Total Stay Amount subtotal separator above payments. */
+.ledger-summary-row.subtotal {
+  font-weight: 700;
+  color: #0f172a;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
 .notes-cell {
   white-space: pre-line;
   max-width: 220px;

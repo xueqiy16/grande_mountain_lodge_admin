@@ -20,8 +20,10 @@ const ENTRY_TYPES = ['room_charge', 'tax', 'damage', 'fee', 'discount', 'extra_n
 const CHARGE_TYPE_OPTIONS = ENTRY_TYPES.filter(t => t !== 'tax');
 // Everything except discount is a positive charge (debit); discount is a credit.
 const isDebitEntry = (type) => type !== 'discount';
-// A positive charge that is NOT a tax line (tax is auto-calculated, not itemized).
-const isChargeableDebit = (type) => type !== 'discount' && type !== 'tax';
+// Extra charges layered on top of the base room charge (excludes room_charge, tax, discount).
+const ADDITIONAL_CHARGE_TYPES = ['fee', 'damage', 'extra_night', 'tip', 'other'];
+const sumEntries = (entries, predicate) =>
+  entries.filter(predicate).reduce((a, e) => a + Number(e.amount || 0), 0);
 
 // Auto-calculated taxes computed STRICTLY on the base room charge (nightly_rate × nights).
 // Alberta Tourism Levy is exempt for stays >= 28 nights.
@@ -52,14 +54,13 @@ const formatEntryDate = (d) => {
 
 const todayISODate = () => new Date().toISOString().split('T')[0];
 
-// total_price = (base room charge + Σ non-tax debits) + GST + Tourism Levy − Σ discounts.
-// GST/Levy are auto-calculated on the base room charge only (not on extra debits/discounts).
+// Total Stay Amount = base room charge + additional charges + GST + Tourism Levy − discounts.
+// GST/Levy are auto-calculated on the base room charge only (not on extra charges/discounts).
 const computeTotalPrice = (baseCharge, entries, nights) => {
-  const debits = entries.filter(e => isChargeableDebit(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
-  const discounts = entries.filter(e => e.entry_type === 'discount').reduce((a, e) => a + Number(e.amount || 0), 0);
-  const charges = Number(baseCharge) + debits;
+  const additional = sumEntries(entries, e => ADDITIONAL_CHARGE_TYPES.includes(e.entry_type));
+  const discounts = sumEntries(entries, e => e.entry_type === 'discount');
   const { gst, tourismLevy } = computeTaxes(Number(baseCharge), nights);
-  return charges + gst + tourismLevy - discounts;
+  return Number(baseCharge) + additional + gst + tourismLevy - discounts;
 };
 
 const formatBookingStatus = (status) => {
@@ -244,12 +245,11 @@ const GuestFolio = ({
   const effCheckOut = isEditing ? bookingDraft.check_out : detailBooking?.check_out;
   const liveNights = nightsBetween(effCheckIn, effCheckOut);
   const baseRoomCharge = liveNights * nightlyRate;
-  const sumDebits = folioEntries.filter(e => isChargeableDebit(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
-  const sumDiscounts = folioEntries.filter(e => e.entry_type === 'discount').reduce((a, e) => a + Number(e.amount || 0), 0);
-  const totalCharges = baseRoomCharge + sumDebits;
+  const additionalCharges = sumEntries(folioEntries, e => ADDITIONAL_CHARGE_TYPES.includes(e.entry_type));
+  const sumDiscounts = sumEntries(folioEntries, e => e.entry_type === 'discount');
   const { gst: gstAmount, tourismLevy: tourismLevyAmount } = computeTaxes(baseRoomCharge, liveNights);
   const levyExempt = liveNights >= LEVY_EXEMPT_NIGHTS;
-  const liveTotalPrice = totalCharges + gstAmount + tourismLevyAmount - sumDiscounts;
+  const liveTotalPrice = baseRoomCharge + additionalCharges + gstAmount + tourismLevyAmount - sumDiscounts;
   const transactionsPaid = Number(detailBooking?.amount_paid || 0);
   const liveOutstanding = liveTotalPrice - transactionsPaid;
 
@@ -739,15 +739,24 @@ const GuestFolio = ({
                   </table>
                 </div>
 
-                {/* Balance summary: Total Charges + GST + Levy − Discounts − Payments = Outstanding */}
+                {/* Structured cost breakdown:
+                    Base + Additional + GST + Levy − Discounts = Total Stay Amount;
+                    Total Stay Amount − Payments = Outstanding Balance. */}
                 <div className="ledger-summary">
-                  <div className="ledger-summary-row"><span>Total Charges</span><span>${totalCharges.toFixed(2)}</span></div>
-                  <div className="ledger-summary-row"><span>GST (5%)</span><span>${gstAmount.toFixed(2)}</span></div>
-                  {!levyExempt && (
-                    <div className="ledger-summary-row"><span>Alberta Tourism Levy (6%)</span><span>${tourismLevyAmount.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>Base Room Charges</span><span>${baseRoomCharge.toFixed(2)}</span></div>
+                  {additionalCharges > 0 && (
+                    <div className="ledger-summary-row"><span>Additional Charges &amp; Fees</span><span>${additionalCharges.toFixed(2)}</span></div>
                   )}
-                  <div className="ledger-summary-row"><span>Discounts</span><span>-${sumDiscounts.toFixed(2)}</span></div>
-                  <div className="ledger-summary-row"><span>Payments (Transactions)</span><span>-${transactionsPaid.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>GST (5%)</span><span>${gstAmount.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row">
+                    <span>Alberta Tourism Levy (6%)</span>
+                    <span>${(levyExempt ? 0 : tourismLevyAmount).toFixed(2)}</span>
+                  </div>
+                  {sumDiscounts > 0 && (
+                    <div className="ledger-summary-row"><span>Discounts &amp; Credits</span><span className="credit">-${sumDiscounts.toFixed(2)}</span></div>
+                  )}
+                  <div className="ledger-summary-row subtotal"><span>Total Stay Amount</span><span>${liveTotalPrice.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>Total Payments Paid</span><span className="credit">-${transactionsPaid.toFixed(2)}</span></div>
                   <div className="ledger-summary-row total">
                     <span>Outstanding Balance</span>
                     <span className={liveOutstanding > 0 ? 'debt' : 'clear'}>${liveOutstanding.toFixed(2)}</span>
