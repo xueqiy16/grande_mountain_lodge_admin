@@ -741,6 +741,8 @@ textarea.input-edited {
 /* Add Charge sub-modal: contained, scrollable body with generous padding. */
 .add-charge-modal {
   padding: 0 !important;
+  width: 90%;
+  max-width: 500px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
@@ -753,6 +755,22 @@ textarea.input-edited {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 1.5rem 2rem;
+}
+
+/* Add Charge: 2-column grid; description/notes span full width. */
+.add-charge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  column-gap: 16px;
+  row-gap: 16px;
+}
+.add-charge-grid .full-span {
+  grid-column: 1 / -1;
+}
+@media (max-width: 640px) {
+  .add-charge-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Compact table action buttons */

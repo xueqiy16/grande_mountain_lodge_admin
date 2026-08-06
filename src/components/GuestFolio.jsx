@@ -139,6 +139,12 @@ const GuestFolio = ({
   };
   const [chargeForm, setChargeForm] = useState(blankCharge);
 
+  // Lock backdrop scroll while the Add Charge modal is open.
+  useEffect(() => {
+    document.body.style.overflow = addChargeOpen ? 'hidden' : 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [addChargeOpen]);
+
   // Resolve nested/looked-up relations defensively.
   const resolveGuest = (b) => b?.guests || guests.find(g => g?.guest_id === b?.guest_id) || {};
   const resolveRoom = (b) => b?.rooms || rooms.find(r => r?.room_id === b?.room_id) || {};
@@ -878,7 +884,8 @@ const GuestFolio = ({
             </div>
 
             <div className="add-charge-body">
-            <div className="detail-grid">
+            <div className="add-charge-grid">
+              {/* Row 1: Charge Type | Amount */}
               <div className="detail-field">
                 <label>Charge Type *</label>
                 <select
@@ -901,22 +908,14 @@ const GuestFolio = ({
                   disabled={savingCharge}
                 />
               </div>
+
+              {/* Row 2: Entry Date | Staff Member */}
               <div className="detail-field">
                 <label>Entry Date</label>
                 <input
                   type="date"
                   value={chargeForm.entry_date}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_date: e.target.value })}
-                  disabled={savingCharge}
-                />
-              </div>
-              <div className="detail-field">
-                <label>Description</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Pet Fee, Late Checkout, GST 5%"
-                  value={chargeForm.description}
-                  onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
                   disabled={savingCharge}
                 />
               </div>
@@ -931,21 +930,34 @@ const GuestFolio = ({
                   {staff.map(name => <option key={name} value={name}>{name}</option>)}
                 </select>
               </div>
-            </div>
 
-            <div className="detail-field" style={{ marginTop: '12px' }}>
-              <label>Notes</label>
-              <textarea
-                rows={3}
-                maxLength={500}
-                placeholder="Add any notes for this charge..."
-                value={chargeForm.notes}
-                onChange={(e) => setChargeForm({ ...chargeForm, notes: e.target.value })}
-                disabled={savingCharge}
-                className="notes-edit"
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-              <p className="field-hint-text">{(chargeForm.notes || '').length}/500 characters</p>
+              {/* Row 3: Description (full width) */}
+              <div className="detail-field full-span">
+                <label>Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Pet Fee, Late Checkout, GST 5%"
+                  value={chargeForm.description}
+                  onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
+                  disabled={savingCharge}
+                />
+              </div>
+
+              {/* Row 4: Notes (full width) */}
+              <div className="detail-field full-span">
+                <label>Notes</label>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  placeholder="Add any notes for this charge..."
+                  value={chargeForm.notes}
+                  onChange={(e) => setChargeForm({ ...chargeForm, notes: e.target.value })}
+                  disabled={savingCharge}
+                  className="notes-edit"
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+                <p className="field-hint-text">{(chargeForm.notes || '').length}/500 characters</p>
+              </div>
             </div>
 
             <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
