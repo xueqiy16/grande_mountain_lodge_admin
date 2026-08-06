@@ -265,6 +265,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="walkin-form">
+          <div className="walkin-form-body">
           <div className="form-section" style={{ marginBottom: '20px' }}>
             <label>1. Select Room Category</label>
             <select
@@ -489,9 +490,13 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             />
           </div>
 
-          <button type="submit" className="tool-btn primary" style={{ width: '100%', marginTop: '20px' }} disabled={isProcessing}>
-            {isProcessing ? 'Processing...' : 'Complete Check In'}
-          </button>
+          </div>
+
+          <div className="walkin-form-footer">
+            <button type="submit" className="tool-btn primary" style={{ width: '100%' }} disabled={isProcessing}>
+              {isProcessing ? 'Processing...' : 'Complete Check In'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
