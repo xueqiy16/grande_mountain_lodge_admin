@@ -288,7 +288,8 @@ const GuestFolio = ({
           children: parseInt(bookingDraft.children, 10) || 0,
           pets: parseInt(bookingDraft.pets, 10) || 0,
           booking_status: bookingDraft.booking_status || null,
-          booking_notes: bookingDraft.booking_notes || null,
+          // Direct overwrite: exact textarea string, no append/concatenation.
+          booking_notes: bookingDraft.booking_notes,
           total_nights: newNights,
           total_price: newTotalPrice
         })
@@ -331,7 +332,8 @@ const GuestFolio = ({
       const { error } = await supabase
         .from('transactions')
         .update({
-          transaction_notes: txnDraft.transaction_notes || null,
+          // Direct overwrite: exact textarea string, no append/concatenation.
+          transaction_notes: txnDraft.transaction_notes,
           staff_member: txnDraft.staff_member || null,
           e_transfer_reference: txnDraft.e_transfer_reference || null
         })
