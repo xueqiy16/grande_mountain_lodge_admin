@@ -16,9 +16,23 @@ const BOOKING_STATUS_OPTIONS = ['confirmed', 'checked_in', 'checked_out', 'cance
 
 // folio_entries enums (exact DB values).
 const ENTRY_TYPES = ['room_charge', 'tax', 'damage', 'fee', 'discount', 'extra_night', 'tip', 'other'];
-const TAX_TYPES = ['gst', 'tourism_levy', 'other'];
+// Taxes are auto-calculated, so staff cannot manually add a 'tax' charge from the UI.
+const CHARGE_TYPE_OPTIONS = ENTRY_TYPES.filter(t => t !== 'tax');
 // Everything except discount is a positive charge (debit); discount is a credit.
 const isDebitEntry = (type) => type !== 'discount';
+// A positive charge that is NOT a tax line (tax is auto-calculated, not itemized).
+const isChargeableDebit = (type) => type !== 'discount' && type !== 'tax';
+
+// Auto-calculated taxes computed STRICTLY on the base room charge (nightly_rate × nights).
+// Alberta Tourism Levy is exempt for stays >= 28 nights.
+const GST_RATE = 0.05;
+const TOURISM_LEVY_RATE = 0.06;
+const LEVY_EXEMPT_NIGHTS = 28;
+const computeTaxes = (baseRoomCharge, nights) => {
+  const gst = Number(baseRoomCharge) * GST_RATE;
+  const tourismLevy = nights >= LEVY_EXEMPT_NIGHTS ? 0 : Number(baseRoomCharge) * TOURISM_LEVY_RATE;
+  return { gst, tourismLevy };
+};
 
 // Whole nights between two YYYY-MM-DD dates (0 if invalid/negative).
 const nightsBetween = (checkIn, checkOut) => {
@@ -38,11 +52,14 @@ const formatEntryDate = (d) => {
 
 const todayISODate = () => new Date().toISOString().split('T')[0];
 
-// total_price = base room charge + Σ(debit entries) − Σ(discount entries).
-const computeTotalPrice = (baseCharge, entries) => {
-  const debits = entries.filter(e => isDebitEntry(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
+// total_price = (base room charge + Σ non-tax debits) + GST + Tourism Levy − Σ discounts.
+// GST/Levy are auto-calculated on the base room charge only (not on extra debits/discounts).
+const computeTotalPrice = (baseCharge, entries, nights) => {
+  const debits = entries.filter(e => isChargeableDebit(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
   const discounts = entries.filter(e => e.entry_type === 'discount').reduce((a, e) => a + Number(e.amount || 0), 0);
-  return Number(baseCharge) + debits - discounts;
+  const charges = Number(baseCharge) + debits;
+  const { gst, tourismLevy } = computeTaxes(Number(baseCharge), nights);
+  return charges + gst + tourismLevy - discounts;
 };
 
 const formatBookingStatus = (status) => {
@@ -114,7 +131,6 @@ const GuestFolio = ({
   const [savingCharge, setSavingCharge] = useState(false);
   const blankCharge = {
     entry_type: '',
-    tax_type: 'gst',
     amount: '',
     description: '',
     staff_member: '',
@@ -222,9 +238,12 @@ const GuestFolio = ({
   const effCheckOut = isEditing ? bookingDraft.check_out : detailBooking?.check_out;
   const liveNights = nightsBetween(effCheckIn, effCheckOut);
   const baseRoomCharge = liveNights * nightlyRate;
-  const sumDebits = folioEntries.filter(e => isDebitEntry(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
+  const sumDebits = folioEntries.filter(e => isChargeableDebit(e.entry_type)).reduce((a, e) => a + Number(e.amount || 0), 0);
   const sumDiscounts = folioEntries.filter(e => e.entry_type === 'discount').reduce((a, e) => a + Number(e.amount || 0), 0);
-  const liveTotalPrice = baseRoomCharge + sumDebits - sumDiscounts;
+  const totalCharges = baseRoomCharge + sumDebits;
+  const { gst: gstAmount, tourismLevy: tourismLevyAmount } = computeTaxes(baseRoomCharge, liveNights);
+  const levyExempt = liveNights >= LEVY_EXEMPT_NIGHTS;
+  const liveTotalPrice = totalCharges + gstAmount + tourismLevyAmount - sumDiscounts;
   const transactionsPaid = Number(detailBooking?.amount_paid || 0);
   const liveOutstanding = liveTotalPrice - transactionsPaid;
 
@@ -277,7 +296,7 @@ const GuestFolio = ({
       // charge = nightly_rate * nights, and total_price = base + folio debits - discounts.
       const newNights = Math.max(1, nightsBetween(bookingDraft.check_in, bookingDraft.check_out));
       const newBaseCharge = newNights * nightlyRate;
-      const newTotalPrice = Number(computeTotalPrice(newBaseCharge, folioEntries).toFixed(2));
+      const newTotalPrice = Number(computeTotalPrice(newBaseCharge, folioEntries, newNights).toFixed(2));
 
       const { error: bErr } = await supabase
         .from('bookings')
@@ -364,7 +383,7 @@ const GuestFolio = ({
       const payload = {
         booking_id: detailBooking.booking_id,
         entry_type: chargeForm.entry_type,
-        tax_type: chargeForm.entry_type === 'tax' ? chargeForm.tax_type : null,
+        tax_type: null,
         amount,
         description: chargeForm.description.trim() || null,
         staff_member: chargeForm.staff_member || null,
@@ -377,7 +396,7 @@ const GuestFolio = ({
 
       // Recalculate total_price = base + Σ(debits) − Σ(discounts) including the new entry.
       const newEntries = [...folioEntries, ...(data && data.length ? data : [payload])];
-      const newTotalPrice = Number(computeTotalPrice(baseRoomCharge, newEntries).toFixed(2));
+      const newTotalPrice = Number(computeTotalPrice(baseRoomCharge, newEntries, liveNights).toFixed(2));
       const { error: bErr } = await supabase
         .from('bookings')
         .update({ total_price: newTotalPrice })
@@ -679,7 +698,6 @@ const GuestFolio = ({
                         <th style={{ width: '90px' }}>Date</th>
                         <th style={{ width: '110px' }}>Type</th>
                         <th>Description</th>
-                        <th style={{ width: '90px' }}>Tax</th>
                         <th style={{ width: '90px' }}>Amount</th>
                         <th style={{ width: '130px' }}>Staff</th>
                         <th>Notes</th>
@@ -691,19 +709,18 @@ const GuestFolio = ({
                         <td>{formatEntryDate(effCheckIn)}</td>
                         <td>room_charge</td>
                         <td>Base Room Charge ({liveNights} night{liveNights === 1 ? '' : 's'} × ${nightlyRate.toFixed(2)})</td>
-                        <td>-</td>
                         <td>${baseRoomCharge.toFixed(2)}</td>
                         <td>-</td>
                         <td>-</td>
                       </tr>
-                      {folioEntries.map((e, idx) => {
+                      {/* Tax lines are auto-calculated and shown in the summary, not itemized here. */}
+                      {folioEntries.filter(e => e.entry_type !== 'tax').map((e, idx) => {
                         const debit = isDebitEntry(e.entry_type);
                         return (
                           <tr key={e.folio_entry_id || idx}>
                             <td>{formatEntryDate(e.entry_date)}</td>
                             <td>{e.entry_type || 'N/A'}</td>
                             <td>{e.description || '-'}</td>
-                            <td>{e.tax_type || '-'}</td>
                             <td style={{ color: debit ? '#0f172a' : '#ef4444' }}>
                               {debit ? '' : '-'}${Number(e.amount || 0).toFixed(2)}
                             </td>
@@ -716,9 +733,13 @@ const GuestFolio = ({
                   </table>
                 </div>
 
-                {/* Balance summary: Σ Debits − Discounts − Payments = Outstanding */}
+                {/* Balance summary: Total Charges + GST + Levy − Discounts − Payments = Outstanding */}
                 <div className="ledger-summary">
-                  <div className="ledger-summary-row"><span>Total Charges</span><span>${(baseRoomCharge + sumDebits).toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>Total Charges</span><span>${totalCharges.toFixed(2)}</span></div>
+                  <div className="ledger-summary-row"><span>GST (5%)</span><span>${gstAmount.toFixed(2)}</span></div>
+                  {!levyExempt && (
+                    <div className="ledger-summary-row"><span>Alberta Tourism Levy (6%)</span><span>${tourismLevyAmount.toFixed(2)}</span></div>
+                  )}
                   <div className="ledger-summary-row"><span>Discounts</span><span>-${sumDiscounts.toFixed(2)}</span></div>
                   <div className="ledger-summary-row"><span>Payments (Transactions)</span><span>-${transactionsPaid.toFixed(2)}</span></div>
                   <div className="ledger-summary-row total">
@@ -850,12 +871,13 @@ const GuestFolio = ({
       {/* + ADD CHARGE SUB-MODAL (folio_entries) */}
       {addChargeOpen && (
         <div className="modal-overlay" onClick={() => !savingCharge && setAddChargeOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content add-charge-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Add Charge</h3>
               <button onClick={() => !savingCharge && setAddChargeOpen(false)} className="close-drawer-btn">✕</button>
             </div>
 
+            <div className="add-charge-body">
             <div className="detail-grid">
               <div className="detail-field">
                 <label>Charge Type *</label>
@@ -865,21 +887,9 @@ const GuestFolio = ({
                   disabled={savingCharge}
                 >
                   <option value="">Select charge type...</option>
-                  {ENTRY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {CHARGE_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              {chargeForm.entry_type === 'tax' && (
-                <div className="detail-field">
-                  <label>Tax Type *</label>
-                  <select
-                    value={chargeForm.tax_type}
-                    onChange={(e) => setChargeForm({ ...chargeForm, tax_type: e.target.value })}
-                    disabled={savingCharge}
-                  >
-                    {TAX_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-              )}
               <div className="detail-field">
                 <label>Amount ($) *</label>
                 <input
@@ -941,6 +951,7 @@ const GuestFolio = ({
             <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
               {savingCharge ? 'Saving...' : 'Save Charge'}
             </button>
+            </div>
           </div>
         </div>
       )}

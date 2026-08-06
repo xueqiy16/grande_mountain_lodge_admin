@@ -725,6 +725,35 @@ textarea.input-edited {
   top: 0;
   background: #f8fafc;
 }
+/* Unify ledger table text with the popup's standard body text. */
+.txn-ledger-table td,
+.txn-ledger-table th {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #334155;
+}
+.txn-ledger-table th {
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* Add Charge sub-modal: contained, scrollable body with generous padding. */
+.add-charge-modal {
+  padding: 0 !important;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.add-charge-modal .modal-header {
+  padding: 1rem 2rem;
+}
+.add-charge-body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1.5rem 2rem;
+}
 
 /* Compact table action buttons */
 .tool-btn.sm {
