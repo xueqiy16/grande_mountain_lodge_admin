@@ -520,6 +520,11 @@ body {
 .pms-table td:first-child { border-left: 1px solid var(--border); border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
 .pms-table td:last-child { border-right: 1px solid var(--border); border-top-right-radius: 12px; border-bottom-right-radius: 12px; }
 
+/* Compact trailing columns (Stay Dates / Outstanding / Action): shrink to content
+   and trim horizontal padding to free space for the wider Room Type column. */
+.pms-table th.col-tight { padding-left: 12px; padding-right: 12px; }
+.pms-table td.col-tight { padding-left: 12px; padding-right: 12px; white-space: nowrap; width: 1%; }
+
 .checkin-btn { background: #22c55e; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; cursor: pointer; }
 .checkout-btn.checkout-warning {
   background: #f59e0b;

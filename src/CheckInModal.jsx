@@ -118,6 +118,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   const isDirty = String(selectedType) !== originalTypeId ||
     Object.keys(checkInBaseline).some(k => String(formData[k] ?? '') !== String(checkInBaseline[k] ?? ''));
 
+  // Green highlight for any field whose current value diverges from the value
+  // it was pre-populated with from the booking/guest record on open.
+  const dirtyClass = (field) =>
+    String(formData[field] ?? '') !== String(checkInBaseline[field] ?? '') ? 'input-edited' : '';
+  const roomDirtyClass = String(selectedType) !== originalTypeId ? 'input-edited' : '';
+
   // Close request from the X button: confirm first if there are unsaved changes.
   const requestClose = () => {
     if (isProcessing) return;
@@ -298,7 +304,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
               required
               value={selectedType}
               onChange={(e) => { setSelectedType(e.target.value); setRoomError(false); }}
-              className={`prefilled ${roomError ? 'input-error' : ''}`}
+              className={`prefilled ${roomDirtyClass} ${roomError ? 'input-error' : ''}`}
               aria-invalid={roomError}
               aria-describedby={roomError ? 'room-category-error' : undefined}
               disabled={isProcessing}
@@ -317,31 +323,31 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
 
           {/* Identity Group */}
           <div className="form-grid-3">
-            <div className="form-group"><label>First Name</label><input className="prefilled" type="text" required value={formData.first_name} onChange={(e) => setFormData({...formData, first_name: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>Last Name</label><input className="prefilled" type="text" required value={formData.last_name} onChange={(e) => setFormData({...formData, last_name: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>Email</label><input className="prefilled" type="email" required value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>First Name</label><input className={`prefilled ${dirtyClass('first_name')}`} type="text" required value={formData.first_name} onChange={(e) => setFormData({...formData, first_name: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Last Name</label><input className={`prefilled ${dirtyClass('last_name')}`} type="text" required value={formData.last_name} onChange={(e) => setFormData({...formData, last_name: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Email</label><input className={`prefilled ${dirtyClass('email')}`} type="email" required value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} disabled={isProcessing} /></div>
           </div>
 
           {/* Schedule Group */}
           <div className="form-grid-3">
-            <div className="form-group"><label>Check-In Date</label><input className="prefilled" type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>Check-Out Date</label><input className="prefilled" type="date" value={formData.check_out} required onChange={(e) => setFormData({...formData, check_out: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>Phone</label><input className="prefilled" type="text" required value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Check-In Date</label><input className={`prefilled ${dirtyClass('check_in')}`} type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Check-Out Date</label><input className={`prefilled ${dirtyClass('check_out')}`} type="date" value={formData.check_out} required onChange={(e) => setFormData({...formData, check_out: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Phone</label><input className={`prefilled ${dirtyClass('phone')}`} type="text" required value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} disabled={isProcessing} /></div>
           </div>
 
           {/* Location Group */}
           <div className="form-grid-3">
-            <div className="form-group"><label>Address</label><input className="prefilled" type="text" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>City</label><input className="prefilled" type="text" value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>Country</label><input className="prefilled" type="text" value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Address</label><input className={`prefilled ${dirtyClass('address')}`} type="text" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>City</label><input className={`prefilled ${dirtyClass('city')}`} type="text" value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Country</label><input className={`prefilled ${dirtyClass('country')}`} type="text" value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} disabled={isProcessing} /></div>
           </div>
 
           <div className="form-grid-3">
             <div className="form-group"><label>Adults/Children/Pets</label>
               <div style={{display:'flex', gap:'5px'}}>
-                <input className="prefilled" type="number" placeholder="A" value={formData.adults} onChange={(e) => setFormData({...formData, adults: e.target.value})} disabled={isProcessing} />
-                <input className="prefilled" type="number" placeholder="C" value={formData.children} onChange={(e) => setFormData({...formData, children: e.target.value})} disabled={isProcessing} />
-                <input className="prefilled" type="number" placeholder="P" value={formData.pets} onChange={(e) => setFormData({...formData, pets: e.target.value})} disabled={isProcessing} />
+                <input className={`prefilled ${dirtyClass('adults')}`} type="number" placeholder="A" value={formData.adults} onChange={(e) => setFormData({...formData, adults: e.target.value})} disabled={isProcessing} />
+                <input className={`prefilled ${dirtyClass('children')}`} type="number" placeholder="C" value={formData.children} onChange={(e) => setFormData({...formData, children: e.target.value})} disabled={isProcessing} />
+                <input className={`prefilled ${dirtyClass('pets')}`} type="number" placeholder="P" value={formData.pets} onChange={(e) => setFormData({...formData, pets: e.target.value})} disabled={isProcessing} />
               </div>
             </div>
           </div>
@@ -540,7 +546,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
               value={formData.notes}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
               disabled={isProcessing}
-              className="notes-edit"
+              className={`notes-edit ${dirtyClass('notes')}`}
               style={{ resize: 'vertical', width: '100%' }}
             />
           </div>

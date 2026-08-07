@@ -583,17 +583,22 @@ function App() {
                           <div className="view-header"><h2>Expected Check-Ins</h2><div className="date-selector"><label>DATE</label><input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} /></div></div>
                           {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').length > 0 ? (
                             <table className="pms-table">
-                              <thead><tr><th>Guest Name</th><th>Room</th><th>Stay Dates</th><th>Outstanding</th><th>Action</th></tr></thead>
+                              <thead><tr><th>Guest Name</th><th>Room</th><th>Room Type</th><th className="col-tight">Stay Dates</th><th className="col-tight">Outstanding</th><th className="col-tight">Action</th></tr></thead>
                               <tbody>
-                                {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').map(booking => (
+                                {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').map(booking => {
+                                  const rt = booking.rooms?.room_types;
+                                  const roomTypeLabel = rt ? `${rt.name} (${rt.code})` : (booking.rooms?.code || 'N/A');
+                                  return (
                                   <tr key={booking.booking_id}>
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>{booking.rooms?.room_number}</td>
-                                    <td>{booking.check_in} to {booking.check_out}</td>
-                                    <td style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
-                                    <td><button onClick={() => handleCheckIn(booking)} className="checkin-btn">Check-In</button></td>
+                                    <td>{roomTypeLabel}</td>
+                                    <td className="col-tight">{booking.check_in} to {booking.check_out}</td>
+                                    <td className="col-tight" style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
+                                    <td className="col-tight"><button onClick={() => handleCheckIn(booking)} className="checkin-btn">Check-In</button></td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           ) : (
@@ -607,15 +612,19 @@ function App() {
                           <div className="view-header"><h2>Expected Check-Outs</h2><div className="date-selector"><label>DATE</label><input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div></div>
                           {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').length > 0 ? (
                             <table className="pms-table">
-                              <thead><tr><th>Guest Name</th><th>Room</th><th>Stay Dates</th><th>Outstanding</th><th>Action</th></tr></thead>
+                              <thead><tr><th>Guest Name</th><th>Room</th><th>Room Type</th><th className="col-tight">Stay Dates</th><th className="col-tight">Outstanding</th><th className="col-tight">Action</th></tr></thead>
                               <tbody>
-                                {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').map(booking => (
+                                {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').map(booking => {
+                                  const rt = booking.rooms?.room_types;
+                                  const roomTypeLabel = rt ? `${rt.name} (${rt.code})` : (booking.rooms?.code || 'N/A');
+                                  return (
                                   <tr key={booking.booking_id}>
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>{booking.rooms?.room_number}</td>
-                                    <td>{booking.check_in} to {booking.check_out}</td>
-                                    <td style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
-                                    <td>
+                                    <td>{roomTypeLabel}</td>
+                                    <td className="col-tight">{booking.check_in} to {booking.check_out}</td>
+                                    <td className="col-tight" style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
+                                    <td className="col-tight">
                                       <button 
                                         onClick={() => handleCheckOut(booking)} 
                                         className={`checkout-btn ${Number(calculateOutstandingBalance(booking)) > 0 ? 'checkout-warning' : ''}`}
@@ -624,7 +633,8 @@ function App() {
                                       </button>
                                     </td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           ) : (
