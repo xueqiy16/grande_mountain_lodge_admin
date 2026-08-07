@@ -469,15 +469,26 @@ const GuestFolio = ({
   // Open the "Complete Pre-Authorization" modal pre-filled from the source pre_auth
   // transaction. Staff Member is intentionally left blank (required before save).
   const openComplete = (t) => {
-    // Human-readable auto-note: amount + original pre-auth date (charged_at is the
-    // charge timestamp; fall back to updated_at).
-    const preAuthTs = t?.charged_at || t?.updated_at;
-    const preAuthDate = preAuthTs
-      ? new Date(preAuthTs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : '';
+    // Human-readable auto-note: amount + original charge date, plus an (Updated ...)
+    // suffix when the pre-auth was later modified. charged_at is the schema's charge
+    // timestamp; updated_at is the last-modified timestamp.
+    const formatDate = (dateStr) => {
+      if (!dateStr) return '';
+      const dt = new Date(dateStr);
+      if (isNaN(dt.getTime())) return '';
+      return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+    const createdDate = formatDate(t?.charged_at || t?.created_at);
+    const updatedDate = formatDate(t?.updated_at);
     const formattedAmount = Number(t?.amount || 0).toFixed(2);
-    const autoNote = preAuthDate
-      ? `Completion for Pre-Auth of $${formattedAmount} on ${preAuthDate}`
+    let dateSuffix = createdDate ? `on ${createdDate}` : '';
+    if (updatedDate) {
+      dateSuffix = dateSuffix
+        ? `${dateSuffix} (Updated ${updatedDate})`
+        : `(Updated ${updatedDate})`;
+    }
+    const autoNote = dateSuffix
+      ? `Completion for Pre-Auth of $${formattedAmount} ${dateSuffix}`
       : `Completion for Pre-Auth of $${formattedAmount}`;
     const draft = {
       transaction_type: 'completion',
