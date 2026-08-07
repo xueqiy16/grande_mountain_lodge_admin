@@ -264,6 +264,11 @@ const GuestFolio = ({
   // Resolve nightly_rate strictly through the room relationship: rooms -> room_types.
   const roomType = resolveRoom(detailBooking).room_types || {};
   const nightlyRate = Number(roomType.nightly_rate || 0);
+  // Display rate for the read-only "Room Cost per Night" field: prefer the room
+  // type's nightly_rate, fall back to a booking-level rate, else null => 'N/A'.
+  const roomNightlyRate = roomType?.nightly_rate != null
+    ? Number(roomType.nightly_rate)
+    : (detailBooking?.nightly_rate != null ? Number(detailBooking.nightly_rate) : null);
   const effCheckIn = isEditing ? bookingDraft.check_in : detailBooking?.check_in;
   const effCheckOut = isEditing ? bookingDraft.check_out : detailBooking?.check_out;
   // Nights basis: stored booking.total_nights in view mode; live date math while editing.
@@ -722,10 +727,21 @@ const GuestFolio = ({
               {/* ROOM & STAY */}
               <div className="detail-section-title">Room &amp; Stay</div>
               <div className="detail-grid">
+                {/* Row 1: Room Code | Room Name | Room Cost per Night */}
                 <div className="detail-field">
                   <label>Room Code</label>
                   <input value={roomCode} disabled readOnly />
                 </div>
+                <div className="detail-field">
+                  <label>Room Name</label>
+                  <input value={roomType?.name || detailBooking?.room_type_name || 'N/A'} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <label>Room Cost per Night</label>
+                  <input value={roomNightlyRate != null ? `$${roomNightlyRate.toFixed(2)} / night` : 'N/A'} disabled readOnly />
+                </div>
+
+                {/* Row 2: Check-in | Check-out | Total Nights */}
                 <div className="detail-field">
                   <label>Check-in</label>
                   <input
@@ -750,6 +766,8 @@ const GuestFolio = ({
                   <label>Total Nights {isEditing ? '(auto)' : ''}</label>
                   <input value={liveNights || detailBooking?.total_nights || 0} disabled readOnly />
                 </div>
+
+                {/* Row 3: Total Price | Booking Status */}
                 <div className="detail-field">
                   <label>Total Price {isEditing ? '(auto)' : ''}</label>
                   <input value={`$${Number(liveTotalPrice).toFixed(2)}`} disabled readOnly />
@@ -766,10 +784,6 @@ const GuestFolio = ({
                       <option key={s} value={s}>{formatBookingStatus(s)}</option>
                     ))}
                   </select>
-                </div>
-                <div className="detail-field">
-                  <label>Cardholder Name</label>
-                  <input value={detailBooking?.card_holder_name || 'N/A'} disabled readOnly />
                 </div>
               </div>
 
@@ -959,136 +973,159 @@ const GuestFolio = ({
       {/* TRANSACTION "MORE DETAILS" SUB-MODAL */}
       {txnDetail && (
         <div className="modal-overlay">
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content edit-txn-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Edit Transaction</h3>
               <button onClick={() => guardedClose(txnDirty, () => setTxnDetail(null))} className="close-drawer-btn">✕</button>
             </div>
 
-            <div className="detail-grid">
-              {/* Locked core fields — change via void + new transaction only */}
-              <div className="detail-field">
-                <label>Amount ($) (locked)</label>
-                <input value={`$${Number(txnDetail?.amount || 0).toFixed(2)}`} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Payment Method (locked)</label>
-                <input value={txnDetail?.payment_method || 'N/A'} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Transaction Type (locked)</label>
-                <input value={txnDetail?.transaction_type || 'N/A'} disabled readOnly />
+            <div className="edit-txn-body">
+              {/* Row 1: Locked core fields — change via void + new transaction only */}
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <div className="field-label-row">
+                    <label>Amount ($)</label>
+                    <span className="lock-badge">(Locked)</span>
+                  </div>
+                  <input value={`$${Number(txnDetail?.amount || 0).toFixed(2)}`} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <div className="field-label-row">
+                    <label>Payment Method</label>
+                    <span className="lock-badge">(Locked)</span>
+                  </div>
+                  <input value={txnDetail?.payment_method || 'N/A'} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <div className="field-label-row">
+                    <label>Transaction Type</label>
+                    <span className="lock-badge">(Locked)</span>
+                  </div>
+                  <input value={txnDetail?.transaction_type || 'N/A'} disabled readOnly />
+                </div>
               </div>
 
-              {/* Editable metadata */}
-              <div className="detail-field">
-                <label>Staff Member</label>
-                <select
-                  value={txnDraft.staff_member}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, staff_member: e.target.value })}
-                  className={editedClass(txnDraft.staff_member, txnDetail?.staff_member)}
-                >
-                  <option value="">Unspecified</option>
-                  {staff.map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
+              {/* Row 2: Staff Member | Cardholder Name | Last 4 */}
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Staff Member</label>
+                  <select
+                    value={txnDraft.staff_member}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, staff_member: e.target.value })}
+                    className={editedClass(txnDraft.staff_member, txnDetail?.staff_member)}
+                  >
+                    <option value="">Unspecified</option>
+                    {staff.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="detail-field">
+                  <label>Cardholder Name</label>
+                  <input
+                    value={txnDraft.cardholder_name}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
+                    className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Last 4</label>
+                  <input
+                    maxLength={4}
+                    value={txnDraft.last4}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    className={editedClass(txnDraft.last4, txnDetail?.last4)}
+                  />
+                </div>
               </div>
-              <div className="detail-field">
-                <label>Cardholder Name</label>
-                <input
-                  value={txnDraft.cardholder_name}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
-                  className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
-                />
+
+              {/* Row 3: Expiry Month | Expiry Year | Auth Code */}
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Expiry Month (MM)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    placeholder="MM"
+                    value={txnDraft.expiry_month}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, expiry_month: e.target.value })}
+                    className={editedClass(txnDraft.expiry_month, txnDetail?.expiry_month)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Expiry Year (YYYY)</label>
+                  <input
+                    type="number"
+                    min="2020"
+                    max="2100"
+                    placeholder="YYYY"
+                    value={txnDraft.expiry_year}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, expiry_year: e.target.value })}
+                    className={editedClass(txnDraft.expiry_year, txnDetail?.expiry_year)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Auth Code</label>
+                  <input
+                    value={txnDraft.auth_code}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, auth_code: e.target.value })}
+                    className={editedClass(txnDraft.auth_code, txnDetail?.auth_code)}
+                  />
+                </div>
               </div>
-              <div className="detail-field">
-                <label>Last 4</label>
-                <input
-                  maxLength={4}
-                  value={txnDraft.last4}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                  className={editedClass(txnDraft.last4, txnDetail?.last4)}
-                />
+
+              {/* Row 4: Reference Number | E-Transfer Reference */}
+              <div className="detail-grid-2">
+                <div className="detail-field">
+                  <label>Reference Number</label>
+                  <input
+                    value={txnDraft.reference_number}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
+                    className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>E-Transfer Reference</label>
+                  <input
+                    value={txnDraft.e_transfer_reference}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
+                    className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
+                  />
+                </div>
               </div>
+
+              {/* Row 5: Transaction Notes (full width) */}
               <div className="detail-field">
-                <label>Expiry Month (MM)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  placeholder="MM"
-                  value={txnDraft.expiry_month}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, expiry_month: e.target.value })}
-                  className={editedClass(txnDraft.expiry_month, txnDetail?.expiry_month)}
+                <label>Transaction Notes</label>
+                <textarea
+                  rows={4}
+                  maxLength={500}
+                  value={txnDraft.transaction_notes}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, transaction_notes: e.target.value })}
+                  className={`notes-edit ${editedClass(txnDraft.transaction_notes, txnDetail?.transaction_notes)}`}
+                  style={{ width: '100%', resize: 'vertical' }}
                 />
+                <p className="field-hint-text">{(txnDraft.transaction_notes || '').length}/500 characters</p>
               </div>
-              <div className="detail-field">
-                <label>Expiry Year (YYYY)</label>
-                <input
-                  type="number"
-                  min="2020"
-                  max="2100"
-                  placeholder="YYYY"
-                  value={txnDraft.expiry_year}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, expiry_year: e.target.value })}
-                  className={editedClass(txnDraft.expiry_year, txnDetail?.expiry_year)}
-                />
-              </div>
-              <div className="detail-field">
-                <label>Auth Code</label>
-                <input
-                  value={txnDraft.auth_code}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, auth_code: e.target.value })}
-                  className={editedClass(txnDraft.auth_code, txnDetail?.auth_code)}
-                />
-              </div>
-              <div className="detail-field">
-                <label>Reference Number</label>
-                <input
-                  value={txnDraft.reference_number}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
-                  className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
-                />
-              </div>
-              <div className="detail-field">
-                <label>E-Transfer Reference</label>
-                <input
-                  value={txnDraft.e_transfer_reference}
-                  onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
-                  className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
-                />
+
+              {/* Row 6: Actions (full width, stacked) + microcopy */}
+              <div className="edit-txn-actions">
+                <button className="tool-btn primary btn-block-center" onClick={saveTxn} disabled={savingTxn}>
+                  {savingTxn ? 'Saving...' : 'Save Changes'}
+                </button>
+                {!isVoidedTxn(txnDetail) && (
+                  <button
+                    className="tool-btn btn-block-center btn-danger"
+                    onClick={() => setVoidTarget(txnDetail)}
+                    disabled={savingTxn}
+                  >
+                    Void Transaction
+                  </button>
+                )}
+                <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
+                  Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
+                </p>
               </div>
             </div>
-
-            <div className="detail-field" style={{ marginTop: '12px' }}>
-              <label>Transaction Notes</label>
-              <textarea
-                rows={4}
-                maxLength={500}
-                value={txnDraft.transaction_notes}
-                onChange={(e) => setTxnDraft({ ...txnDraft, transaction_notes: e.target.value })}
-                className={`notes-edit ${editedClass(txnDraft.transaction_notes, txnDetail?.transaction_notes)}`}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-              <p className="field-hint-text">{(txnDraft.transaction_notes || '').length}/500 characters</p>
-            </div>
-
-            <button className="tool-btn primary btn-block-center" style={{ marginTop: '16px' }} onClick={saveTxn} disabled={savingTxn}>
-              {savingTxn ? 'Saving...' : 'Save Changes'}
-            </button>
-            {!isVoidedTxn(txnDetail) && (
-              <button
-                className="tool-btn btn-block-center btn-danger"
-                style={{ marginTop: '10px' }}
-                onClick={() => setVoidTarget(txnDetail)}
-                disabled={savingTxn}
-              >
-                Void Transaction
-              </button>
-            )}
-
-            <p className="field-hint-text" style={{ textAlign: 'center', marginTop: '12px' }}>
-              Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
-            </p>
           </div>
         </div>
       )}
