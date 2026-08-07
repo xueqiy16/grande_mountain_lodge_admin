@@ -144,7 +144,11 @@ function App() {
 
   const calculateOutstandingBalance = (booking) => {
     if (!booking) return "0.00";
-    const totalCost = Number(calculateTotalBalance(booking));
+    // Prefer the stored tax-inclusive total_price (base + fees + taxes − discounts),
+    // kept current by folio edits; fall back to base room charge for legacy rows.
+    const totalCost = booking.total_price != null
+      ? Number(booking.total_price)
+      : Number(calculateTotalBalance(booking));
     // Settled payments only — pre-authorizations never reduce the outstanding balance.
     const paid = calculateAmountPaid(booking.transactions || []);
     return (totalCost - paid).toFixed(2);
@@ -383,7 +387,7 @@ function App() {
                             Total Stay Revenue (In-House): <span style={{color: '#22c55e'}}>$
                               {Number(bookings
                                 .filter(b => b.booking_status === 'checked_in')
-                                .reduce((acc, b) => acc + Number(calculateTotalBalance(b)), 0)).toFixed(2)}
+                                .reduce((acc, b) => acc + (b.total_price != null ? Number(b.total_price) : Number(calculateTotalBalance(b))), 0)).toFixed(2)}
                             </span>
                           </div>
                           <div className="stat-pill">

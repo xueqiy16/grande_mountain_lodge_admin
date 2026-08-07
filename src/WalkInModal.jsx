@@ -160,18 +160,14 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
 
-    // Pricing: nights between check-in/check-out (min 1) * nightly rate of the type.
+    // Pricing: nights * nightly rate + taxes. total_price stores the tax-inclusive
+    // grand total (base + GST + tourism levy); folio edits later fold in fees/discounts.
     const selectedRoomType = roomTypes.find(
       t => String(t.room_type_id).trim() === sanitizedValue
     );
-    const start = new Date(formData.check_in + 'T00:00:00');
-    const end = new Date(formData.check_out + 'T00:00:00');
-    const totalNights = Math.max(
-      1,
-      Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-    );
-    const nightlyRate = Number(selectedRoomType?.nightly_rate || 0);
-    const totalPrice = Number((totalNights * nightlyRate).toFixed(2));
+    const priced = computeStayCost(selectedRoomType?.nightly_rate, formData.check_in, formData.check_out);
+    const totalNights = Math.max(1, priced.numberOfNights);
+    const totalPrice = Number(priced.totalStayAmount.toFixed(2));
 
     const cardHolderName = requiresCardDetails
       ? (formData.card_holder_name.trim() ||
