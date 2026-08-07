@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 // Fresh blank reservation state (check_in defaults to today each time it's built).
 // transaction_type defaults to pre_auth (guest starting a stay); staff can switch
@@ -21,6 +22,12 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   const [etransferError, setEtransferError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(getInitialFormData());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Dirty when a room is picked or any field diverges from a fresh blank form.
+  const pristine = getInitialFormData();
+  const isDirty = selectedType !== '' ||
+    Object.keys(pristine).some(k => String(formData[k] ?? '') !== String(pristine[k] ?? ''));
 
   // Wipe the entire form back to a clean slate (used on close + successful booking).
   const resetForm = () => {
@@ -35,6 +42,13 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   const handleClose = () => {
     resetForm();
     onClose();
+  };
+
+  // Close request from the X button: confirm first if there are unsaved changes.
+  const requestClose = () => {
+    if (isSubmitting) return;
+    if (isDirty) { setConfirmOpen(true); return; }
+    handleClose();
   };
 
   // card_brand holds the selected payment_method enum value (visa/mastercard/amex/interac_debit/cash/e_transfer).
@@ -236,7 +250,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       <div className="modal-content walkin-modal-wide">
         <div className="modal-header">
           <h3>New Walk In</h3>
-          <button onClick={handleClose} className="close-drawer-btn">✕</button>
+          <button onClick={requestClose} className="close-drawer-btn">✕</button>
         </div>
         
         <form onSubmit={handleSubmit} className="walkin-form">
@@ -461,6 +475,12 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
           </div>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onYes={() => { setConfirmOpen(false); handleClose(); }}
+        onNo={() => setConfirmOpen(false)}
+      />
     </div>
   );
 };

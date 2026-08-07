@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 const PaymentModal = ({
   isOpen,
@@ -18,7 +19,11 @@ const PaymentModal = ({
     return Number(diffNights) * Number(b.rooms.room_types.nightly_rate);
   };
 
-  const totalAmount = Number(calculateTotalBalance(booking));
+  // Prefer the stored total_price (reflects live folio subtotals: base + charges +
+  // taxes − discounts). Fall back to nights × rate for legacy rows without it.
+  const totalAmount = booking?.total_price != null
+    ? Number(booking.total_price)
+    : Number(calculateTotalBalance(booking));
   const amountPaid = Number(booking?.amount_paid || 0);
   const outstandingBalance = totalAmount - amountPaid;
 
@@ -44,6 +49,11 @@ const PaymentModal = ({
   const [etransferError, setEtransferError] = useState(false);
   const [voidError, setVoidError] = useState(false);
   const [formData, setFormData] = useState(blankForm);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Dirty when any field diverges from the seeded baseline (type + cardholder prefill).
+  const pristine = { ...blankForm, transaction_type: defaultTransactionType, cardholder_name: guestFullName };
+  const isDirty = Object.keys(pristine).some(k => String(formData[k] ?? '') !== String(pristine[k] ?? ''));
 
   // Seed defaults (transaction type + cardholder pre-fill) when the modal opens.
   useEffect(() => {
@@ -134,6 +144,7 @@ const PaymentModal = ({
 
   const handleClose = () => {
     if (isProcessing) return;
+    if (isDirty) { setConfirmOpen(true); return; }
     onClose();
   };
 
@@ -369,6 +380,12 @@ const PaymentModal = ({
           </button>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onYes={() => { setConfirmOpen(false); onClose(); }}
+        onNo={() => setConfirmOpen(false)}
+      />
     </div>
   );
 };

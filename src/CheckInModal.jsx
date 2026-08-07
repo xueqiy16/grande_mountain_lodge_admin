@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 // Blank slate used on close; the form is re-populated from the booking on open.
 const getBlankFormData = () => ({
@@ -18,6 +19,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   const [etransferError, setEtransferError] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [formData, setFormData] = useState(getBlankFormData());
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // card_brand holds the selected payment_method enum value (visa/mastercard/amex/interac_debit/cash/e_transfer).
   const isEtransfer = formData.card_brand === 'e_transfer';
@@ -98,8 +100,27 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   const isRoomAvailable = (room) =>
     (room?.status ?? '').toString().toLowerCase().trim() === 'available';
 
-  const handleClose = () => {
+  // Baseline mirrors the prefill effect, so a freshly opened form is never "dirty".
+  const baselineGuest = booking?.guests || {};
+  const checkInBaseline = {
+    first_name: baselineGuest.first_name || '', last_name: baselineGuest.last_name || '',
+    email: baselineGuest.email || '', phone: baselineGuest.phone || '',
+    address: baselineGuest.address || '', city: baselineGuest.city || '', country: baselineGuest.country || '',
+    check_in: booking?.check_in || '', check_out: booking?.check_out || '',
+    adults: booking?.adults ?? 1, children: booking?.children ?? 0, pets: booking?.pets ?? 0,
+    card_brand: '', cardholder_name: `${baselineGuest.first_name || ''} ${baselineGuest.last_name || ''}`.trim(),
+    last4: '', expiry_month: '', expiry_year: '', etransfer_reference: '',
+    amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
+    notes: booking?.booking_notes || ''
+  };
+  const originalTypeId = String(booking?.rooms?.room_type_id ?? '');
+  const isDirty = String(selectedType) !== originalTypeId ||
+    Object.keys(checkInBaseline).some(k => String(formData[k] ?? '') !== String(checkInBaseline[k] ?? ''));
+
+  // Close request from the X button: confirm first if there are unsaved changes.
+  const requestClose = () => {
     if (isProcessing) return;
+    if (isDirty) { setConfirmOpen(true); return; }
     onClose();
   };
 
@@ -261,7 +282,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
       <div className="modal-content walkin-modal-wide">
         <div className="modal-header">
           <h3>Check In Guest</h3>
-          <button onClick={handleClose} className="close-drawer-btn" disabled={isProcessing}>✕</button>
+          <button onClick={requestClose} className="close-drawer-btn" disabled={isProcessing}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="walkin-form">
@@ -499,6 +520,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           </div>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onYes={() => { setConfirmOpen(false); onClose(); }}
+        onNo={() => setConfirmOpen(false)}
+      />
     </div>
   );
 };

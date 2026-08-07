@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import PaymentModal from '../PaymentModal';
+import ConfirmDialog from './ConfirmDialog';
 import { STAFF_MEMBERS } from '../lib/constants';
 
 // Status filter tabs (Checked In default). "all" shows every booking.
@@ -118,6 +119,8 @@ const GuestFolio = ({
   const [guestDraft, setGuestDraft] = useState({});
   const [bookingDraft, setBookingDraft] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  // Deferred close action awaiting confirmation (null when no prompt is open).
+  const [pendingClose, setPendingClose] = useState(null);
 
   // "New Transaction" modal
   const [payBooking, setPayBooking] = useState(null);
@@ -469,6 +472,40 @@ const GuestFolio = ({
   const origRoom = detailBooking ? resolveRoom(detailBooking) : {};
   const roomCode = origRoom.code || origRoom.room_types?.code || origRoom.room_number || 'N/A';
 
+  // --- Unsaved-changes guard --------------------------------------------------
+  const differs = (a, b) => String(a ?? '') !== String(b ?? '');
+  const detailsDirty = isEditing && (
+    ['first_name', 'last_name', 'email', 'phone', 'address', 'city', 'country']
+      .some(k => differs(guestDraft[k], origGuest?.[k])) ||
+    differs(bookingDraft.check_in, detailBooking?.check_in) ||
+    differs(bookingDraft.check_out, detailBooking?.check_out) ||
+    differs(bookingDraft.adults, detailBooking?.adults) ||
+    differs(bookingDraft.children, detailBooking?.children) ||
+    differs(bookingDraft.pets, detailBooking?.pets) ||
+    differs(bookingDraft.booking_status, detailBooking?.booking_status) ||
+    differs(bookingDraft.booking_notes, detailBooking?.booking_notes)
+  );
+  const chargeBaseline = chargeOriginal || blankCharge;
+  const chargeDirty = ['entry_type', 'amount', 'description', 'staff_member', 'notes', 'entry_date']
+    .some(k => differs(chargeForm[k], chargeBaseline[k]));
+  const txnDirty = !!txnDetail && (
+    differs(txnDraft.staff_member, txnDetail.staff_member) ||
+    differs(txnDraft.e_transfer_reference, txnDetail.e_transfer_reference) ||
+    differs(txnDraft.transaction_notes, txnDetail.transaction_notes)
+  );
+
+  // Run closeFn immediately when clean; otherwise defer behind a confirm dialog.
+  const guardedClose = (dirty, closeFn) => {
+    if (dirty) setPendingClose(() => closeFn);
+    else closeFn();
+  };
+
+  // Always resolve the payment booking from live state so the New Transaction
+  // modal reflects the latest total_price / amount_paid after folio edits.
+  const livePayBooking = payBooking
+    ? (bookings.find(b => b?.booking_id === payBooking.booking_id) || payBooking)
+    : null;
+
   return (
     <div className="folio-view">
       <div className="view-header">
@@ -550,7 +587,8 @@ const GuestFolio = ({
                   {' '}· Room {origRoom?.room_number || 'N/A'}
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="folio-header-actions">
+                <button onClick={() => guardedClose(detailsDirty, closeDetail)} className="close-drawer-btn">✕</button>
                 {!isEditing ? (
                   <button className="tool-btn sm" onClick={startEdit}>Edit</button>
                 ) : (
@@ -558,7 +596,6 @@ const GuestFolio = ({
                     {isSaving ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
-                <button onClick={closeDetail} className="close-drawer-btn">✕</button>
               </div>
             </div>
 
@@ -824,26 +861,30 @@ const GuestFolio = ({
               {/* TRANSACTION LEDGER */}
               <div className="detail-section-title">Transactions</div>
               <div className="txn-ledger-scroll">
-                <table className="pms-table txn-ledger-table">
+                <table className="pms-table txn-ledger-table ledger-compact">
                   <thead>
                     <tr>
-                      <th>Amount</th>
-                      <th>Type</th>
-                      <th>Method</th>
-                      <th>Staff</th>
-                      <th style={{ width: '110px' }}></th>
+                      <th style={{ width: '90px' }}>Date</th>
+                      <th style={{ width: '80px' }}>Amount</th>
+                      <th style={{ width: '110px' }}>Transaction Type</th>
+                      <th style={{ width: '110px' }}>Payment Method</th>
+                      <th>Staff Member</th>
+                      <th style={{ width: '72px', textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {bookingTxns.length === 0 ? (
-                      <tr><td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8' }}>No transactions yet.</td></tr>
+                      <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8' }}>No transactions yet.</td></tr>
                     ) : bookingTxns.map(t => (
                       <tr key={t.transaction_id}>
+                        <td>{formatEntryDate(t?.charged_at)}</td>
                         <td>${Number(t?.amount || 0).toFixed(2)}</td>
                         <td>{t?.transaction_type || 'N/A'}</td>
                         <td>{t?.payment_method || 'N/A'}</td>
                         <td>{t?.staff_member || 'N/A'}</td>
-                        <td><button className="tool-btn sm" onClick={() => openTxn(t)}>More Details</button></td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -859,8 +900,8 @@ const GuestFolio = ({
         <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Transaction Details</h3>
-              <button onClick={() => setTxnDetail(null)} className="close-drawer-btn">✕</button>
+              <h3>Edit Transaction</h3>
+              <button onClick={() => guardedClose(txnDirty, () => setTxnDetail(null))} className="close-drawer-btn">✕</button>
             </div>
 
             <div className="detail-grid">
@@ -934,7 +975,7 @@ const GuestFolio = ({
             </div>
 
             <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveTxn} disabled={savingTxn}>
-              {savingTxn ? 'Saving...' : 'Save Transaction'}
+              {savingTxn ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </div>
@@ -946,7 +987,7 @@ const GuestFolio = ({
           <div className="modal-content add-charge-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{editingChargeId ? 'Edit Charge' : 'Add Charge'}</h3>
-              <button onClick={() => !savingCharge && setAddChargeOpen(false)} className="close-drawer-btn">✕</button>
+              <button onClick={() => !savingCharge && guardedClose(chargeDirty, () => setAddChargeOpen(false))} className="close-drawer-btn">✕</button>
             </div>
 
             <div className="add-charge-body">
@@ -1038,14 +1079,21 @@ const GuestFolio = ({
         </div>
       )}
 
-      {/* NEW TRANSACTION MODAL */}
+      {/* NEW TRANSACTION MODAL — booking resolved from live state for a fresh balance */}
       <PaymentModal
         isOpen={!!payBooking}
         onClose={() => { setPayBooking(null); setPayTxns([]); }}
-        booking={payBooking}
+        booking={livePayBooking}
         onPaymentComplete={async () => { await refreshData?.(); setPayBooking(null); setPayTxns([]); }}
         existingTransactions={payTxns}
         defaultTransactionType="completion"
+      />
+
+      {/* Unsaved-changes confirmation (shared across folio sub-modals) */}
+      <ConfirmDialog
+        open={!!pendingClose}
+        onYes={() => { if (pendingClose) pendingClose(); setPendingClose(null); }}
+        onNo={() => setPendingClose(null)}
       />
     </div>
   );

@@ -354,22 +354,71 @@ body {
 
 .close-drawer-btn {
   position: absolute;
-  top: 20px;
-  right: 15px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  background: #e2e8f0;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.35rem;
   font-weight: 700;
-  color: #64748b;
+  line-height: 1;
+  color: #1e293b;
   cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s;
 }
 
 .close-drawer-btn:hover {
-  background: #e2e8f0;
-  border-color: #cbd5e1;
+  background: #cbd5e1;
+}
+
+/* Unsaved-changes confirmation dialog (sits above all modals). */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+.confirm-dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 380px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+}
+.confirm-message {
+  margin: 0 0 20px;
+  font-size: 0.95rem;
+  color: #1e293b;
+  text-align: center;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+.confirm-actions .tool-btn {
+  min-width: 88px;
+}
+
+/* Guest Details header: stack Edit under the X so they never overlap. */
+.folio-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.folio-header-actions .close-drawer-btn {
+  position: static;
 }
 
 .detail-section {
