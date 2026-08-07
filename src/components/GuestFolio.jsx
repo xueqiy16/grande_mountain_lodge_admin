@@ -69,6 +69,17 @@ const formatEntryDate = (d) => {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+// Transaction timestamp: prefer last-updated, fall back to charged_at. Includes time.
+const formatTxnDate = (t) => {
+  const d = t?.updated_at || t?.charged_at;
+  if (!d) return 'N/A';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
+};
+
 const todayISODate = () => new Date().toISOString().split('T')[0];
 
 // Total Stay Amount = base room charge + additional charges + GST + Tourism Levy − discounts.
@@ -459,8 +470,8 @@ const GuestFolio = ({
   // transaction. Staff Member is intentionally left blank (required before save).
   const openComplete = (t) => {
     // Human-readable auto-note: amount + original pre-auth date (charged_at is the
-    // schema's timestamp column; fall back to created_at if present).
-    const preAuthTs = t?.charged_at || t?.created_at;
+    // charge timestamp; fall back to updated_at).
+    const preAuthTs = t?.charged_at || t?.updated_at;
     const preAuthDate = preAuthTs
       ? new Date(preAuthTs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : '';
@@ -1037,7 +1048,7 @@ const GuestFolio = ({
                 <table className="pms-table txn-ledger-table ledger-compact">
                   <thead>
                     <tr>
-                      <th style={{ width: '90px' }}>Date</th>
+                      <th style={{ width: '140px' }}>Date</th>
                       <th style={{ width: '80px' }}>Amount</th>
                       <th style={{ width: '110px' }}>Transaction Type</th>
                       <th style={{ width: '110px' }}>Payment Method</th>
@@ -1052,7 +1063,7 @@ const GuestFolio = ({
                       const voided = isVoidedTxn(t);
                       return (
                         <tr key={t.transaction_id} className={voided ? 'txn-voided-row' : ''}>
-                          <td>{formatEntryDate(t?.charged_at)}</td>
+                          <td>{formatTxnDate(t)}</td>
                           <td className={voided ? 'txn-amount-voided' : ''}>${Number(t?.amount || 0).toFixed(2)}</td>
                           <td>
                             {t?.transaction_type || 'N/A'}
@@ -1189,12 +1200,11 @@ const GuestFolio = ({
               {/* Row 4: Reference Number | E-Transfer Reference */}
               <div className="detail-grid-2">
                 <div className="detail-field">
-                  <label>Reference Number</label>
-                  <input
-                    value={txnDraft.reference_number}
-                    onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
-                    className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
-                  />
+                  <div className="field-label-row">
+                    <label>Reference Number</label>
+                    <span className="lock-badge">(Locked)</span>
+                  </div>
+                  <input value={txnDraft.reference_number || 'N/A'} disabled readOnly />
                 </div>
                 <div className="detail-field">
                   <label>E-Transfer Reference</label>

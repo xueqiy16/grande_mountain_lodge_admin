@@ -19,3 +19,21 @@ export const computeStayCost = (nightlyRate, checkIn, checkOut) => {
 
   return { nightlyRate: rate, numberOfNights, baseRoomCharge, gst, tourismLevy, totalStayAmount };
 };
+
+// folio_entry_type buckets: positive debits vs. discount credits.
+const ADDITIONAL_CHARGE_TYPES = ['fee', 'damage', 'extra_night', 'tip', 'other'];
+
+// Full stay cost = base room charge + additional fees + taxes − discounts.
+// Mirrors the Guest Details ledger so sidebars/tables show a matching balance.
+export const computeTotalStayCost = (nightlyRate, checkIn, checkOut, folioEntries = []) => {
+  const { numberOfNights, baseRoomCharge, gst, tourismLevy } = computeStayCost(nightlyRate, checkIn, checkOut);
+  const entries = folioEntries || [];
+  const additionalFees = entries
+    .filter(e => ADDITIONAL_CHARGE_TYPES.includes(e?.entry_type))
+    .reduce((a, e) => a + (Number(e?.amount) || 0), 0);
+  const discounts = entries
+    .filter(e => e?.entry_type === 'discount')
+    .reduce((a, e) => a + (Number(e?.amount) || 0), 0);
+  const totalStayCost = baseRoomCharge + additionalFees + gst + tourismLevy - discounts;
+  return { numberOfNights, baseRoomCharge, gst, tourismLevy, additionalFees, discounts, totalStayCost };
+};

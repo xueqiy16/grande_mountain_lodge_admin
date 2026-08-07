@@ -7,6 +7,7 @@ import CheckInModal from './CheckInModal';
 import GuestFolio from './components/GuestFolio';
 import { STAFF_MEMBERS } from './lib/constants';
 import { calculateAmountPaid } from './lib/payments';
+import { computeTotalStayCost } from './lib/costing';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './Login';
@@ -144,14 +145,17 @@ function App() {
 
   const calculateOutstandingBalance = (booking) => {
     if (!booking) return "0.00";
-    // Prefer the stored tax-inclusive total_price (base + fees + taxes − discounts),
-    // kept current by folio edits; fall back to base room charge for legacy rows.
-    const totalCost = booking.total_price != null
-      ? Number(booking.total_price)
-      : Number(calculateTotalBalance(booking));
+    // Full stay cost = base + additional fees + GST + tourism levy − discounts,
+    // computed live from folio_entries so it matches the Guest Details ledger.
+    const { totalStayCost } = computeTotalStayCost(
+      booking.rooms?.room_types?.nightly_rate,
+      booking.check_in,
+      booking.check_out,
+      booking.folio_entries || []
+    );
     // Settled payments only — pre-authorizations never reduce the outstanding balance.
     const paid = calculateAmountPaid(booking.transactions || []);
-    return (totalCost - paid).toFixed(2);
+    return (totalStayCost - paid).toFixed(2);
   };
 
   // Helper function to normalize dates to YYYY-MM-DD format
@@ -711,7 +715,7 @@ function App() {
                   {/* DRAWER FOR MAIN DASHBOARD */}
                   {selectedRoom && currentTab !== 'Guest Folio' && activeBooking && (
                     <div className="detail-drawer">
-                      <button onClick={() => setSelectedRoom(null)} className="close-drawer-btn">✕ Close</button>
+                      <button onClick={() => setSelectedRoom(null)} className="close-drawer-btn" aria-label="Close">✕</button>
                       <div className="detail-section">
                         <h4>Guest & Stay</h4>
                         <div className="detail-row"><span className="detail-label">Name</span><span className="detail-value">{activeBooking.guests?.first_name} {activeBooking.guests?.last_name}</span></div>
