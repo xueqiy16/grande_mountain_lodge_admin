@@ -680,6 +680,13 @@ const GuestFolio = ({
   // Highlight helper: red until a staff member is selected, then green.
   const completeStaffClass = completeDraft.staff_member ? 'input-edited' : 'input-required';
 
+  // Payment-method-driven field visibility (Edit Transaction uses the locked method).
+  const txnIsCard = ['visa', 'mastercard', 'amex'].includes(txnDetail?.payment_method);
+  const txnIsEtransfer = txnDetail?.payment_method === 'e_transfer';
+  // Same visibility rules for the Complete Pre-Auth modal (method carried from pre-auth).
+  const completeIsCard = ['visa', 'mastercard', 'amex'].includes(completeDraft.payment_method);
+  const completeIsEtransfer = completeDraft.payment_method === 'e_transfer';
+
   // Run closeFn immediately when clean; otherwise defer behind a confirm dialog.
   const guardedClose = (dirty, closeFn) => {
     if (dirty) setPendingClose(() => closeFn);
@@ -873,7 +880,7 @@ const GuestFolio = ({
 
                 {/* Row 2: Check-in | Check-out | Total Nights */}
                 <div className="detail-field">
-                  <label>Check-in</label>
+                  <label>Check In *</label>
                   <input
                     type="date"
                     value={isEditing ? bookingDraft.check_in : (detailBooking?.check_in || '')}
@@ -883,7 +890,7 @@ const GuestFolio = ({
                   />
                 </div>
                 <div className="detail-field">
-                  <label>Check-out</label>
+                  <label>Check Out *</label>
                   <input
                     type="date"
                     value={isEditing ? bookingDraft.check_out : (detailBooking?.check_out || '')}
@@ -921,7 +928,7 @@ const GuestFolio = ({
               <div className="detail-section-title">Occupancy</div>
               <div className="detail-grid">
                 <div className="detail-field">
-                  <label>Adults</label>
+                  <label>Adults *</label>
                   <input
                     type="number"
                     min="0"
@@ -956,7 +963,7 @@ const GuestFolio = ({
               </div>
 
               {/* NOTES */}
-              <div className="detail-section-title">Notes</div>
+              <div className="detail-section-title">Booking Notes</div>
               {isEditing ? (
                 <textarea
                   className={`notes-edit ${editedClass(bookingDraft.booking_notes, detailBooking?.booking_notes)}`}
@@ -1115,21 +1122,21 @@ const GuestFolio = ({
             </div>
 
             <div className="edit-txn-body">
-              {/* Row 1: Locked core fields — change via void + new transaction only */}
+              {/* Row 1: Locked core fields — Payment Method first — change via void + new transaction only */}
               <div className="detail-grid">
-                <div className="detail-field">
-                  <div className="field-label-row">
-                    <label>Amount ($)</label>
-                    <span className="lock-badge">(Locked)</span>
-                  </div>
-                  <input value={`$${Number(txnDetail?.amount || 0).toFixed(2)}`} disabled readOnly />
-                </div>
                 <div className="detail-field">
                   <div className="field-label-row">
                     <label>Payment Method</label>
                     <span className="lock-badge">(Locked)</span>
                   </div>
                   <input value={txnDetail?.payment_method || 'N/A'} disabled readOnly />
+                </div>
+                <div className="detail-field">
+                  <div className="field-label-row">
+                    <label>Amount</label>
+                    <span className="lock-badge">(Locked)</span>
+                  </div>
+                  <input value={`$${Number(txnDetail?.amount || 0).toFixed(2)}`} disabled readOnly />
                 </div>
                 <div className="detail-field">
                   <div className="field-label-row">
@@ -1140,7 +1147,7 @@ const GuestFolio = ({
                 </div>
               </div>
 
-              {/* Row 2: Staff Member | Cardholder Name | Last 4 */}
+              {/* Row 2: Staff Member (universal) | Auth Code | Reference Number (locked) */}
               <div className="detail-grid">
                 <div className="detail-field">
                   <label>Staff Member</label>
@@ -1154,51 +1161,6 @@ const GuestFolio = ({
                   </select>
                 </div>
                 <div className="detail-field">
-                  <label>Cardholder Name</label>
-                  <input
-                    value={txnDraft.cardholder_name}
-                    onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
-                    className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
-                  />
-                </div>
-                <div className="detail-field">
-                  <label>Last 4</label>
-                  <input
-                    maxLength={4}
-                    value={txnDraft.last4}
-                    onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                    className={editedClass(txnDraft.last4, txnDetail?.last4)}
-                  />
-                </div>
-              </div>
-
-              {/* Row 3: Expiry Month | Expiry Year | Auth Code */}
-              <div className="detail-grid">
-                <div className="detail-field">
-                  <label>Expiry Month (MM)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    placeholder="MM"
-                    value={txnDraft.expiry_month}
-                    onChange={(e) => setTxnDraft({ ...txnDraft, expiry_month: e.target.value })}
-                    className={editedClass(txnDraft.expiry_month, txnDetail?.expiry_month)}
-                  />
-                </div>
-                <div className="detail-field">
-                  <label>Expiry Year (YYYY)</label>
-                  <input
-                    type="number"
-                    min="2020"
-                    max="2100"
-                    placeholder="YYYY"
-                    value={txnDraft.expiry_year}
-                    onChange={(e) => setTxnDraft({ ...txnDraft, expiry_year: e.target.value })}
-                    className={editedClass(txnDraft.expiry_year, txnDetail?.expiry_year)}
-                  />
-                </div>
-                <div className="detail-field">
                   <label>Auth Code</label>
                   <input
                     value={txnDraft.auth_code}
@@ -1206,10 +1168,6 @@ const GuestFolio = ({
                     className={editedClass(txnDraft.auth_code, txnDetail?.auth_code)}
                   />
                 </div>
-              </div>
-
-              {/* Row 4: Reference Number | E-Transfer Reference */}
-              <div className="detail-grid-2">
                 <div className="detail-field">
                   <div className="field-label-row">
                     <label>Reference Number</label>
@@ -1217,15 +1175,68 @@ const GuestFolio = ({
                   </div>
                   <input value={txnDraft.reference_number || 'N/A'} disabled readOnly />
                 </div>
-                <div className="detail-field">
-                  <label>E-Transfer Reference</label>
-                  <input
-                    value={txnDraft.e_transfer_reference}
-                    onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
-                    className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
-                  />
-                </div>
               </div>
+
+              {/* Card metadata — only for Visa / Mastercard / Amex */}
+              {txnIsCard && (
+                <div className="detail-grid">
+                  <div className="detail-field">
+                    <label>Cardholder Name</label>
+                    <input
+                      value={txnDraft.cardholder_name}
+                      onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
+                      className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
+                    />
+                  </div>
+                  <div className="detail-field">
+                    <label>Last 4 Digits *</label>
+                    <input
+                      maxLength={4}
+                      value={txnDraft.last4}
+                      onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                      className={editedClass(txnDraft.last4, txnDetail?.last4)}
+                    />
+                  </div>
+                  <div className="detail-field">
+                    <label>Expiry Month (MM) *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      placeholder="MM"
+                      value={txnDraft.expiry_month}
+                      onChange={(e) => setTxnDraft({ ...txnDraft, expiry_month: e.target.value })}
+                      className={editedClass(txnDraft.expiry_month, txnDetail?.expiry_month)}
+                    />
+                  </div>
+                  <div className="detail-field">
+                    <label>Expiry Year (YYYY) *</label>
+                    <input
+                      type="number"
+                      min="2020"
+                      max="2100"
+                      placeholder="YYYY"
+                      value={txnDraft.expiry_year}
+                      onChange={(e) => setTxnDraft({ ...txnDraft, expiry_year: e.target.value })}
+                      className={editedClass(txnDraft.expiry_year, txnDetail?.expiry_year)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* E-Transfer reference — only for E-Transfer */}
+              {txnIsEtransfer && (
+                <div className="detail-grid-2">
+                  <div className="detail-field">
+                    <label>E-Transfer Reference Number *</label>
+                    <input
+                      value={txnDraft.e_transfer_reference}
+                      onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
+                      className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Row 5: Transaction Notes (full width) */}
               <div className="detail-field">
@@ -1281,7 +1292,7 @@ const GuestFolio = ({
                   <input value={completeDraft.transaction_type || 'N/A'} disabled readOnly />
                 </div>
                 <div className="detail-field">
-                  <label>Amount ($)</label>
+                  <label>Amount</label>
                   <input value={`$${Number(completeDraft.amount || 0).toFixed(2)}`} disabled readOnly />
                 </div>
                 <div className="detail-field">
@@ -1294,7 +1305,7 @@ const GuestFolio = ({
                 </div>
               </div>
 
-              {/* Row 2: Staff Member (required) | Cardholder Name | Last 4 */}
+              {/* Row 2: Staff Member (required, universal) */}
               <div className="detail-grid">
                 <div className="detail-field">
                   <label>Staff Member *</label>
@@ -1307,33 +1318,39 @@ const GuestFolio = ({
                     {staff.map(name => <option key={name} value={name}>{name}</option>)}
                   </select>
                 </div>
-                <div className="detail-field">
-                  <label>Cardholder Name</label>
-                  <input value={completeDraft.cardholder_name || 'N/A'} disabled readOnly />
-                </div>
-                <div className="detail-field">
-                  <label>Last 4</label>
-                  <input value={completeDraft.last4 || 'N/A'} disabled readOnly />
-                </div>
               </div>
 
-              {/* Row 3: Expiry Month | Expiry Year | (E-Transfer Reference, only for e_transfer) */}
-              <div className={completeDraft.payment_method === 'e_transfer' ? 'detail-grid' : 'detail-grid-2'}>
-                <div className="detail-field">
-                  <label>Expiry Month (MM)</label>
-                  <input value={completeDraft.expiry_month || 'N/A'} disabled readOnly />
-                </div>
-                <div className="detail-field">
-                  <label>Expiry Year (YYYY)</label>
-                  <input value={completeDraft.expiry_year || 'N/A'} disabled readOnly />
-                </div>
-                {completeDraft.payment_method === 'e_transfer' && (
+              {/* Card metadata — only for Visa / Mastercard / Amex */}
+              {completeIsCard && (
+                <div className="detail-grid">
                   <div className="detail-field">
-                    <label>E-Transfer Reference</label>
+                    <label>Cardholder Name</label>
+                    <input value={completeDraft.cardholder_name || 'N/A'} disabled readOnly />
+                  </div>
+                  <div className="detail-field">
+                    <label>Last 4 Digits *</label>
+                    <input value={completeDraft.last4 || 'N/A'} disabled readOnly />
+                  </div>
+                  <div className="detail-field">
+                    <label>Expiry Month (MM) *</label>
+                    <input value={completeDraft.expiry_month || 'N/A'} disabled readOnly />
+                  </div>
+                  <div className="detail-field">
+                    <label>Expiry Year (YYYY) *</label>
+                    <input value={completeDraft.expiry_year || 'N/A'} disabled readOnly />
+                  </div>
+                </div>
+              )}
+
+              {/* E-Transfer reference — only for E-Transfer */}
+              {completeIsEtransfer && (
+                <div className="detail-grid-2">
+                  <div className="detail-field">
+                    <label>E-Transfer Reference Number *</label>
                     <input value={completeDraft.e_transfer_reference || 'N/A'} disabled readOnly />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Row 4: Transaction Notes (full width) */}
               <div className="detail-field">
@@ -1394,7 +1411,7 @@ const GuestFolio = ({
                 </select>
               </div>
               <div className="detail-field">
-                <label>Amount ($) *</label>
+                <label>Amount *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1408,7 +1425,7 @@ const GuestFolio = ({
 
               {/* Row 2: Entry Date | Staff Member */}
               <div className="detail-field">
-                <label>Entry Date</label>
+                <label>Entry Date *</label>
                 <input
                   type="date"
                   value={chargeForm.entry_date}
@@ -1443,9 +1460,9 @@ const GuestFolio = ({
                 />
               </div>
 
-              {/* Row 4: Notes (full width) */}
+              {/* Row 4: Charge Notes (full width) */}
               <div className="detail-field full-span">
-                <label>Notes</label>
+                <label>Charge Notes</label>
                 <textarea
                   rows={3}
                   maxLength={500}

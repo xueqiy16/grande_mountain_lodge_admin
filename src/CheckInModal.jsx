@@ -299,7 +299,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         <form onSubmit={handleSubmit} className="walkin-form">
           <div className="walkin-form-body">
           <div className="form-section" style={{ marginBottom: '20px' }}>
-            <label>1. Select Room Category</label>
+            <label>Room Type</label>
             <select
               required
               value={selectedType}
@@ -330,8 +330,8 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
 
           {/* Schedule Group */}
           <div className="form-grid-3">
-            <div className="form-group"><label>Check-In Date</label><input className={`prefilled ${dirtyClass('check_in')}`} type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} disabled={isProcessing} /></div>
-            <div className="form-group"><label>Check-Out Date</label><input className={`prefilled ${dirtyClass('check_out')}`} type="date" value={formData.check_out} required onChange={(e) => setFormData({...formData, check_out: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Check In *</label><input className={`prefilled ${dirtyClass('check_in')}`} type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} disabled={isProcessing} /></div>
+            <div className="form-group"><label>Check Out *</label><input className={`prefilled ${dirtyClass('check_out')}`} type="date" value={formData.check_out} required onChange={(e) => setFormData({...formData, check_out: e.target.value})} disabled={isProcessing} /></div>
             <div className="form-group"><label>Phone</label><input className={`prefilled ${dirtyClass('phone')}`} type="text" required value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} disabled={isProcessing} /></div>
           </div>
 
@@ -343,12 +343,17 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           </div>
 
           <div className="form-grid-3">
-            <div className="form-group"><label>Adults/Children/Pets</label>
-              <div style={{display:'flex', gap:'5px'}}>
-                <input className={`prefilled ${dirtyClass('adults')}`} type="number" placeholder="A" value={formData.adults} onChange={(e) => setFormData({...formData, adults: e.target.value})} disabled={isProcessing} />
-                <input className={`prefilled ${dirtyClass('children')}`} type="number" placeholder="C" value={formData.children} onChange={(e) => setFormData({...formData, children: e.target.value})} disabled={isProcessing} />
-                <input className={`prefilled ${dirtyClass('pets')}`} type="number" placeholder="P" value={formData.pets} onChange={(e) => setFormData({...formData, pets: e.target.value})} disabled={isProcessing} />
-              </div>
+            <div className="form-group">
+              <label>Adults *</label>
+              <input className={`prefilled ${dirtyClass('adults')}`} type="number" min="0" value={formData.adults} required onChange={(e) => setFormData({...formData, adults: e.target.value})} disabled={isProcessing} />
+            </div>
+            <div className="form-group">
+              <label>Children</label>
+              <input className={`prefilled ${dirtyClass('children')}`} type="number" min="0" value={formData.children} onChange={(e) => setFormData({...formData, children: e.target.value})} disabled={isProcessing} />
+            </div>
+            <div className="form-group">
+              <label>Pets</label>
+              <input className={`prefilled ${dirtyClass('pets')}`} type="number" min="0" value={formData.pets} onChange={(e) => setFormData({...formData, pets: e.target.value})} disabled={isProcessing} />
             </div>
           </div>
 
@@ -422,7 +427,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             </div>
 
             <div className="form-group">
-              <label>Amount Paid ($) *</label>
+              <label>Amount Paid *</label>
               <input
                 type="number"
                 min="0"
@@ -490,14 +495,13 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             {requiresCardDetails && (
               <>
                 <div className="form-group">
-                  <label>Cardholder Name *</label>
+                  <label>Cardholder Name</label>
                   <input
                     className="prefilled"
                     type="text"
                     placeholder="Name on card"
                     value={formData.cardholder_name}
                     onChange={(e) => setFormData({...formData, cardholder_name: e.target.value})}
-                    required
                     disabled={isProcessing}
                   />
                 </div>
@@ -513,33 +517,34 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Expiry (MM/YYYY) *</label>
-                  <div style={{display:'flex', gap:'5px'}}>
-                    <input
-                      type="number"
-                      placeholder="MM"
-                      value={formData.expiry_month}
-                      onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
-                      required
-                      disabled={isProcessing}
-                    />
-                    <input
-                      type="number"
-                      placeholder="YYYY"
-                      value={formData.expiry_year}
-                      onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
-                      required
-                      disabled={isProcessing}
-                    />
-                  </div>
+                  <label>Expiry Month (MM) *</label>
+                  <input
+                    type="number"
+                    placeholder="MM"
+                    value={formData.expiry_month}
+                    onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
+                    required
+                    disabled={isProcessing}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Expiry Year (YYYY) *</label>
+                  <input
+                    type="number"
+                    placeholder="YYYY"
+                    value={formData.expiry_year}
+                    onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
+                    required
+                    disabled={isProcessing}
+                  />
                 </div>
               </>
             )}
           </div>
 
-          <div className="form-section-title">Notes</div>
+          <div className="form-section-title">Booking Notes</div>
           <div className="form-group">
-            <label>Notes</label>
+            <label>Booking Notes</label>
             <textarea
               rows={5}
               placeholder="Add or edit booking notes..."

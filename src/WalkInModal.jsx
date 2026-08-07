@@ -261,7 +261,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         <form onSubmit={handleSubmit} className="walkin-form">
           <div className="walkin-form-body">
           <div className="form-section" style={{ marginBottom: '20px' }}>
-            <label>1. Select Room Category</label>
+            <label>Room Type</label>
             <select
               required
               value={selectedType}
@@ -291,8 +291,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
           {/* Schedule Group */}
           <div className="form-grid-3">
-            <div className="form-group"><label>Check-In Date</label><input type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} /></div>
-            <div className="form-group"><label>Check-Out Date</label><input type="date" required onChange={(e) => setFormData({...formData, check_out: e.target.value})} /></div>
+            <div className="form-group"><label>Check In *</label><input type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} /></div>
+            <div className="form-group"><label>Check Out *</label><input type="date" required onChange={(e) => setFormData({...formData, check_out: e.target.value})} /></div>
             <div className="form-group"><label>Phone</label><input type="text" required onChange={(e) => setFormData({...formData, phone: e.target.value})} /></div>
           </div>
 
@@ -304,12 +304,17 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
           </div>
 
           <div className="form-grid-3">
-            <div className="form-group"><label>Adults/Children/Pets</label>
-              <div style={{display:'flex', gap:'5px'}}>
-                <input type="number" placeholder="A" value={formData.adults} onChange={(e) => setFormData({...formData, adults: e.target.value})} />
-                <input type="number" placeholder="C" value={formData.children} onChange={(e) => setFormData({...formData, children: e.target.value})} />
-                <input type="number" placeholder="P" value={formData.pets} onChange={(e) => setFormData({...formData, pets: e.target.value})} />
-              </div>
+            <div className="form-group">
+              <label>Adults *</label>
+              <input type="number" min="0" value={formData.adults} required onChange={(e) => setFormData({...formData, adults: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Children</label>
+              <input type="number" min="0" value={formData.children} onChange={(e) => setFormData({...formData, children: e.target.value})} />
+            </div>
+            <div className="form-group">
+              <label>Pets</label>
+              <input type="number" min="0" value={formData.pets} onChange={(e) => setFormData({...formData, pets: e.target.value})} />
             </div>
           </div>
 
@@ -382,7 +387,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
             </div>
 
             <div className="form-group">
-              <label>Amount Paid ($) *</label>
+              <label>Amount Paid *</label>
               <input
                 type="number"
                 min="0"
@@ -446,13 +451,12 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
             {requiresCardDetails && (
               <>
                 <div className="form-group">
-                  <label>Cardholder Name *</label>
+                  <label>Cardholder Name</label>
                   <input
                     type="text"
                     placeholder="Name on card"
                     value={formData.card_holder_name}
                     onChange={(e) => setFormData({...formData, card_holder_name: e.target.value})}
-                    required
                   />
                 </div>
                 <div className="form-group">
@@ -466,29 +470,30 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                   />
                 </div>
                 <div className="form-group">
-                  <label>Expiry (MM/YYYY) *</label>
-                  <div style={{display:'flex', gap:'5px'}}>
-                    <input
-                      type="number"
-                      placeholder="MM"
-                      value={formData.expiry_month}
-                      onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
-                      required
-                    />
-                    <input
-                      type="number"
-                      placeholder="YYYY"
-                      value={formData.expiry_year}
-                      onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
-                      required
-                    />
-                  </div>
+                  <label>Expiry Month (MM) *</label>
+                  <input
+                    type="number"
+                    placeholder="MM"
+                    value={formData.expiry_month}
+                    onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Expiry Year (YYYY) *</label>
+                  <input
+                    type="number"
+                    placeholder="YYYY"
+                    value={formData.expiry_year}
+                    onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
+                    required
+                  />
                 </div>
               </>
             )}
           </div>
 
-          <div className="form-section-title">Notes</div>
+          <div className="form-section-title">Booking Notes</div>
           <div className="form-group">
             <textarea
               rows={3}

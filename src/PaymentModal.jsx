@@ -181,34 +181,6 @@ const PaymentModal = ({
 
           <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <div className="form-group">
-              <label>Transaction Type *</label>
-              <select
-                required
-                value={formData.transaction_type}
-                onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value })}
-                disabled={isProcessing}
-              >
-                {TRANSACTION_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Amount ($) *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                disabled={isProcessing}
-              />
-            </div>
-          </div>
-
-          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="form-group">
               <label>Payment Method *</label>
               <select
                 required
@@ -233,6 +205,34 @@ const PaymentModal = ({
                 <option value="cash">Cash</option>
                 <option value="e_transfer">E-Transfer</option>
               </select>
+            </div>
+            <div className="form-group">
+              <label>Transaction Type *</label>
+              <select
+                required
+                value={formData.transaction_type}
+                onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value })}
+                disabled={isProcessing}
+              >
+                {TRANSACTION_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="form-group">
+              <label>Amount *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={formData.amount}
+                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                disabled={isProcessing}
+              />
             </div>
             <div className="form-group">
               <label>Staff Member</label>
@@ -265,7 +265,7 @@ const PaymentModal = ({
               </div>
               <div className="form-grid-3">
                 <div className="form-group">
-                  <label>Last 4 Digits</label>
+                  <label>Last 4 Digits *</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -277,7 +277,7 @@ const PaymentModal = ({
                   />
                 </div>
                 <div className="form-group">
-                  <label>Expiry Month</label>
+                  <label>Expiry Month (MM) *</label>
                   <input
                     type="number"
                     min="1"
@@ -289,7 +289,7 @@ const PaymentModal = ({
                   />
                 </div>
                 <div className="form-group">
-                  <label>Expiry Year</label>
+                  <label>Expiry Year (YYYY) *</label>
                   <input
                     type="number"
                     min="2020"
@@ -308,7 +308,7 @@ const PaymentModal = ({
           {isEtransfer && (
             <div className="form-grid-3" style={{ gridTemplateColumns: '1fr' }}>
               <div className="form-group">
-                <label>E-Transfer Reference *</label>
+                <label>E-Transfer Reference Number *</label>
                 <input
                   type="text"
                   value={formData.e_transfer_reference}
@@ -324,7 +324,7 @@ const PaymentModal = ({
           )}
 
           {/* Transaction notes */}
-          <div className="form-section-title" style={{ marginTop: '20px' }}>Notes</div>
+          <div className="form-section-title" style={{ marginTop: '20px' }}>Transaction Notes</div>
           <div className="form-group">
             <textarea
               rows={3}
