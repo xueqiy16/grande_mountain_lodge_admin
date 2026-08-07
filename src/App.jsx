@@ -85,11 +85,16 @@ function App() {
       // Supabase returns errors on the response object instead of throwing, so surface
       // them explicitly — otherwise a failed rooms fetch silently blanks the grid.
       if (roomsRes.error) console.error("ROOM FETCH ERROR:", roomsRes.error);
-      if (bookingsRes.error) console.error("BOOKINGS FETCH ERROR:", bookingsRes.error);
+      if (bookingsRes.error) {
+        console.error("Supabase Fetch Error:", bookingsRes.error);
+      } else {
+        console.log("Fetched Bookings Count:", bookingsRes.data?.length);
+      }
       if (transactionsRes.error) console.error("TRANSACTIONS FETCH ERROR:", transactionsRes.error);
 
       if (roomsRes.data) setRooms(roomsRes.data);
-      if (bookingsRes.data) setBookings(bookingsRes.data);
+      // Always populate booking state so a partial/empty result never leaves stale folios.
+      setBookings(bookingsRes.data || []);
       if (transactionsRes.data) setAllTransactions(transactionsRes.data);
     } catch (error) {
       console.error("ROOM FETCH ERROR:", error);
