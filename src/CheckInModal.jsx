@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
+import { computeStayCost } from './lib/costing';
 // Blank slate used on close; the form is re-populated from the booking on open.
 const getBlankFormData = () => ({
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
@@ -276,6 +277,13 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     }
   };
 
+  // Live cost summary: resolve the selected room type, then derive nights/taxes/total.
+  const selectedRoomTypeLive = roomTypes.find(
+    t => String(t.room_type_id).trim() === String(selectedType).trim()
+  );
+  const cost = computeStayCost(selectedRoomTypeLive?.nightly_rate, formData.check_in, formData.check_out);
+  const showCostInfo = !!selectedRoomTypeLive && cost.numberOfNights > 0;
+
   if (!isOpen) return null;
 
   return (
@@ -342,6 +350,42 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             </div>
           </div>
 
+          {showCostInfo && (
+            <div className="cost-info-box">
+              <div className="cost-info-title">Cost Information</div>
+              <div className="cost-info-row">
+                <span>Room Type</span>
+                <span>{selectedRoomTypeLive.name}{selectedRoomTypeLive.code ? ` (${selectedRoomTypeLive.code})` : ''}</span>
+              </div>
+              <div className="cost-info-row">
+                <span>Room Cost per Night</span>
+                <span>${cost.nightlyRate.toFixed(2)} / night</span>
+              </div>
+              <div className="cost-info-row">
+                <span>Number of Nights</span>
+                <span>{cost.numberOfNights} night{cost.numberOfNights !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="cost-info-row">
+                <span>Base Room Charges</span>
+                <span>${cost.baseRoomCharge.toFixed(2)}</span>
+              </div>
+              <div className="cost-info-row">
+                <span>GST (5%)</span>
+                <span>${cost.gst.toFixed(2)}</span>
+              </div>
+              {cost.numberOfNights < 28 && (
+                <div className="cost-info-row">
+                  <span>Alberta Tourism Levy (6%)</span>
+                  <span>${cost.tourismLevy.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="cost-info-row cost-info-total">
+                <span>Total Stay Amount</span>
+                <span>${cost.totalStayAmount.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
           <div className="form-section-title">Payment Details</div>
           <div className="form-grid-3">
             <div className="form-group">
@@ -387,18 +431,11 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 required
                 disabled={isProcessing}
               />
-              {(() => {
-                const previewType = roomTypes.find(
-                  t => String(t.room_type_id).trim() === String(selectedType).trim()
-                );
-                if (!previewType || !formData.check_in || !formData.check_out) return null;
-                const s = new Date(formData.check_in + 'T00:00:00');
-                const en = new Date(formData.check_out + 'T00:00:00');
-                const nights = Math.ceil((en.getTime() - s.getTime()) / 86400000);
-                if (!(nights > 0)) return null;
-                const total = (nights * Number(previewType.nightly_rate)).toFixed(2);
-                return <p className="field-hint-text">Stay total: ${total} ({nights} night{nights > 1 ? 's' : ''})</p>;
-              })()}
+              {showCostInfo && (
+                <p className="field-hint-text">
+                  Stay total: ${cost.totalStayAmount.toFixed(2)} ({cost.numberOfNights} night{cost.numberOfNights !== 1 ? 's' : ''})
+                </p>
+              )}
             </div>
 
             <div className="form-group">
