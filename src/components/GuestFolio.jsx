@@ -753,7 +753,7 @@ const GuestFolio = ({
                         <th style={{ width: '78px' }}>Amount</th>
                         <th style={{ width: '110px' }}>Staff</th>
                         <th>Notes</th>
-                        <th style={{ width: '58px' }}>Actions</th>
+                        <th style={{ width: '72px', textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -780,7 +780,7 @@ const GuestFolio = ({
                             </td>
                             <td>{e.staff_member || '-'}</td>
                             <td className="notes-cell">{e.notes || '-'}</td>
-                            <td>
+                            <td style={{ textAlign: 'center' }}>
                               <button
                                 type="button"
                                 className="tool-btn sm"
