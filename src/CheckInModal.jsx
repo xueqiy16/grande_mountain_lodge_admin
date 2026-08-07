@@ -460,9 +460,8 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             </div>
 
             <div className="form-group">
-              <label>Staff Member *</label>
+              <label>Staff Member</label>
               <select
-                required
                 value={formData.staff_member}
                 onChange={(e) => setFormData({...formData, staff_member: e.target.value})}
                 disabled={isProcessing}

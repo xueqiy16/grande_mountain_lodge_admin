@@ -418,9 +418,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
             </div>
 
             <div className="form-group">
-              <label>Staff Member *</label>
+              <label>Staff Member</label>
               <select
-                required
                 value={formData.staff_member}
                 onChange={(e) => setFormData({...formData, staff_member: e.target.value})}
               >
