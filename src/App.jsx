@@ -77,8 +77,9 @@ function App() {
         // (a 2nd FK to room_types) made a bare room_types(*) ambiguous (PostgREST PGRST201).
         supabase.from('rooms').select('*, room_types!room_type_id(*)').order('room_number', { ascending: true }),
         // Embed transactions + folio_entries so booking.transactions is populated on refresh.
-        // room_types must stay disambiguated via room_type_id (rooms.code is a 2nd FK -> PGRST201).
-        supabase.from('bookings').select('*, guests(*), rooms(*, room_types!room_type_id(*)), folio_entries(*), transactions(*)'),
+        // Explicit FK hints resolve PGRST201 ambiguity: room_types via room_type_id
+        // (rooms.code is a 2nd FK), transactions via the fk_transactions_booking constraint.
+        supabase.from('bookings').select('*, guests(*), rooms(*, room_types!room_type_id(*)), folio_entries(*), transactions!fk_transactions_booking(*)'),
         supabase.from('transactions').select('*')
       ]);
 
