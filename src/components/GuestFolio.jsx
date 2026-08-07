@@ -683,10 +683,10 @@ const GuestFolio = ({
       <table className="pms-table folio-table">
         <thead>
           <tr>
-            <th style={{ width: '14%' }}>Booking Reference</th>
+            <th style={{ width: '12%' }}>Booking Reference</th>
             <th style={{ width: '22%' }}>Guest Name</th>
-            <th style={{ width: '8%' }}>Room</th>
-            <th style={{ width: '14%' }}>Status</th>
+            <th style={{ width: '6%' }}>Room</th>
+            <th style={{ width: '18%' }}>Status</th>
             <th style={{ width: '14%' }}>Balance</th>
             <th style={{ width: '28%' }}>Actions</th>
           </tr>
@@ -702,7 +702,7 @@ const GuestFolio = ({
                 <td className="folio-number">{b?.booking_reference || b?.booking_id || 'N/A'}</td>
                 <td className="folio-guest-name"><span>{g?.first_name || 'N/A'} {g?.last_name || ''}</span></td>
                 <td>{r?.room_number || 'N/A'}</td>
-                <td><span className={`status-badge status-${b?.booking_status}`}>{formatBookingStatus(b?.booking_status)}</span></td>
+                <td className="folio-status-cell"><span className={`status-badge status-${b?.booking_status}`}>{formatBookingStatus(b?.booking_status)}</span></td>
                 <td className={`balance-cell ${Number(calculateOutstandingBalance(b)) > 0 ? 'unpaid' : 'paid'}`}>
                   ${Number(calculateOutstandingBalance(b)).toFixed(2)}
                 </td>

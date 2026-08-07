@@ -1071,8 +1071,17 @@ textarea.input-required {
 }
 .folio-table .status-badge {
   font-size: 0.6875rem;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 6px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Status column may hold "Checked Out" — keep it on one line. */
+.folio-table td.folio-status-cell {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* New Transaction modal: read-only financial summary header */
