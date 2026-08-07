@@ -498,7 +498,10 @@ const GuestFolio = ({
         expiry_year: completeDraft.expiry_year ? Number(completeDraft.expiry_year) : null,
         auth_code: completeDraft.auth_code || null,
         reference_number: completeDraft.reference_number || null,
-        e_transfer_reference: completeDraft.e_transfer_reference || null,
+        // E-transfer reference only applies when the payment method is e_transfer.
+        e_transfer_reference: completeDraft.payment_method === 'e_transfer'
+          ? (completeDraft.e_transfer_reference || null)
+          : null,
         staff_member: completeDraft.staff_member,
         transaction_notes: completeDraft.transaction_notes || null,
         status: 'completed',
@@ -680,12 +683,12 @@ const GuestFolio = ({
       <table className="pms-table folio-table">
         <thead>
           <tr>
-            <th style={{ width: '150px' }}>Booking Reference</th>
-            <th>Guest Name</th>
-            <th style={{ width: '80px' }}>Room</th>
-            <th style={{ width: '120px' }}>Status</th>
-            <th style={{ width: '110px' }}>Balance</th>
-            <th style={{ width: '220px' }}>Actions</th>
+            <th style={{ width: '14%' }}>Booking Reference</th>
+            <th style={{ width: '22%' }}>Guest Name</th>
+            <th style={{ width: '8%' }}>Room</th>
+            <th style={{ width: '14%' }}>Status</th>
+            <th style={{ width: '14%' }}>Balance</th>
+            <th style={{ width: '28%' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -697,7 +700,7 @@ const GuestFolio = ({
             return (
               <tr key={b.booking_id}>
                 <td className="folio-number">{b?.booking_reference || b?.booking_id || 'N/A'}</td>
-                <td><strong>{g?.first_name || 'N/A'} {g?.last_name || ''}</strong></td>
+                <td className="folio-guest-name"><span>{g?.first_name || 'N/A'} {g?.last_name || ''}</span></td>
                 <td>{r?.room_number || 'N/A'}</td>
                 <td><span className={`status-badge status-${b?.booking_status}`}>{formatBookingStatus(b?.booking_status)}</span></td>
                 <td className={`balance-cell ${Number(calculateOutstandingBalance(b)) > 0 ? 'unpaid' : 'paid'}`}>
@@ -1297,8 +1300,8 @@ const GuestFolio = ({
                 </div>
               </div>
 
-              {/* Row 3: Expiry Month | Expiry Year | Auth Code */}
-              <div className="detail-grid">
+              {/* Row 3: Expiry Month | Expiry Year | (E-Transfer Reference, only for e_transfer) */}
+              <div className={completeDraft.payment_method === 'e_transfer' ? 'detail-grid' : 'detail-grid-2'}>
                 <div className="detail-field">
                   <label>Expiry Month (MM)</label>
                   <input
@@ -1323,37 +1326,19 @@ const GuestFolio = ({
                     className={editedClass(completeDraft.expiry_year, completeInit.expiry_year)}
                   />
                 </div>
-                <div className="detail-field">
-                  <label>Auth Code</label>
-                  <input
-                    value={completeDraft.auth_code}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, auth_code: e.target.value })}
-                    className={editedClass(completeDraft.auth_code, completeInit.auth_code)}
-                  />
-                </div>
+                {completeDraft.payment_method === 'e_transfer' && (
+                  <div className="detail-field">
+                    <label>E-Transfer Reference</label>
+                    <input
+                      value={completeDraft.e_transfer_reference}
+                      onChange={(e) => setCompleteDraft({ ...completeDraft, e_transfer_reference: e.target.value })}
+                      className={editedClass(completeDraft.e_transfer_reference, completeInit.e_transfer_reference)}
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Row 4: Reference Number | E-Transfer Reference */}
-              <div className="detail-grid-2">
-                <div className="detail-field">
-                  <label>Reference Number</label>
-                  <input
-                    value={completeDraft.reference_number}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, reference_number: e.target.value })}
-                    className={editedClass(completeDraft.reference_number, completeInit.reference_number)}
-                  />
-                </div>
-                <div className="detail-field">
-                  <label>E-Transfer Reference</label>
-                  <input
-                    value={completeDraft.e_transfer_reference}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, e_transfer_reference: e.target.value })}
-                    className={editedClass(completeDraft.e_transfer_reference, completeInit.e_transfer_reference)}
-                  />
-                </div>
-              </div>
-
-              {/* Row 5: Transaction Notes (full width) */}
+              {/* Row 4: Transaction Notes (full width) */}
               <div className="detail-field">
                 <label>Transaction Notes</label>
                 <textarea
@@ -1367,7 +1352,7 @@ const GuestFolio = ({
                 <p className="field-hint-text">{(completeDraft.transaction_notes || '').length}/500 characters</p>
               </div>
 
-              {/* Row 6: Actions (full width) + microcopy */}
+              {/* Row 5: Actions (full width) + microcopy */}
               <div className="edit-txn-actions">
                 <button
                   className="tool-btn primary btn-block-center"

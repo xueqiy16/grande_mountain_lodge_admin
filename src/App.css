@@ -1039,6 +1039,40 @@ textarea.input-required {
 .folio-table td {
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+.folio-table th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+/* Guest name: full first + last name on a single line, no ellipsis. */
+.folio-table td.folio-guest-name {
+  overflow: visible;
+  text-overflow: clip;
+}
+.folio-table td.folio-guest-name span {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+/* Compact action buttons + status badges to reclaim horizontal space. */
+.folio-table .folio-row-actions .tool-btn.sm {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  border-radius: 8px;
+}
+.folio-table .status-badge {
+  font-size: 0.6875rem;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
 
 /* New Transaction modal: read-only financial summary header */
