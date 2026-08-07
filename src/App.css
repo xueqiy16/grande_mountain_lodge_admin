@@ -859,6 +859,33 @@ textarea.input-edited {
   background: #f0fdf4 !important;
 }
 
+/* Required-but-empty highlight (e.g. Staff Member before selection). */
+.input-required,
+input.input-required,
+select.input-required,
+textarea.input-required {
+  border: 1px solid #ef4444 !important;
+  background: #fef2f2 !important;
+  color: #991b1b;
+}
+
+/* Inline action buttons in the Transactions table (Edit + Complete). */
+.txn-row-actions {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tool-btn.txn-complete-btn {
+  background: #059669;
+  color: #fff;
+  border-color: #059669;
+}
+.tool-btn.txn-complete-btn:hover {
+  background: #047857;
+  border-color: #047857;
+}
+
 .notes-edit {
   white-space: pre-line;
   line-height: 1.5;

@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import PaymentModal from '../PaymentModal';
 import ConfirmDialog from './ConfirmDialog';
-import { STAFF_MEMBERS } from '../lib/constants';
+import { STAFF_MEMBERS, TRANSACTION_TYPES } from '../lib/constants';
 import { calculateAmountPaid } from '../lib/payments';
+
+// Payment method enum values (value) + human-readable labels for select inputs.
+const PAYMENT_METHOD_OPTIONS = [
+  { value: 'visa', label: 'Visa' },
+  { value: 'mastercard', label: 'Mastercard' },
+  { value: 'amex', label: 'Amex' },
+  { value: 'interac_debit', label: 'Interac Debit' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'e_transfer', label: 'E-Transfer' }
+];
 
 // Status filter tabs (Checked In default). "all" shows every booking.
 const STATUS_TABS = [
@@ -138,6 +148,13 @@ const GuestFolio = ({
   const [savingTxn, setSavingTxn] = useState(false);
   // Transaction pending void confirmation (null when no prompt is open).
   const [voidTarget, setVoidTarget] = useState(null);
+
+  // "Complete Pre-Authorization" sub-modal. completeTarget is the source pre_auth
+  // transaction; completeInit is the initial draft snapshot (drives dirty highlight).
+  const [completeTarget, setCompleteTarget] = useState(null);
+  const [completeDraft, setCompleteDraft] = useState({});
+  const [completeInit, setCompleteInit] = useState({});
+  const [savingComplete, setSavingComplete] = useState(false);
 
   // folio_entries ledger + "+ Add Charge" modal
   const [folioEntries, setFolioEntries] = useState([]);
@@ -438,6 +455,66 @@ const GuestFolio = ({
     }
   };
 
+  // Open the "Complete Pre-Authorization" modal pre-filled from the source pre_auth
+  // transaction. Staff Member is intentionally left blank (required before save).
+  const openComplete = (t) => {
+    const preAuthId = String(t?.transaction_id || '');
+    const draft = {
+      transaction_type: 'completion',
+      amount: t?.amount != null ? String(t.amount) : '',
+      payment_method: t?.payment_method || '',
+      cardholder_name: t?.cardholder_name || '',
+      last4: t?.last4 || '',
+      expiry_month: t?.expiry_month ?? '',
+      expiry_year: t?.expiry_year ?? '',
+      auth_code: t?.auth_code || '',
+      reference_number: t?.reference_number || '',
+      e_transfer_reference: t?.e_transfer_reference || '',
+      staff_member: '',
+      transaction_notes: `Completion for Pre-Auth #${preAuthId.slice(0, 8)}`
+    };
+    setCompleteTarget(t);
+    setCompleteInit(draft);
+    setCompleteDraft(draft);
+  };
+
+  // Insert a new 'completion' transaction linked to the source pre_auth row.
+  const saveComplete = async () => {
+    if (!completeTarget || !detailBooking) return;
+    if (!completeDraft.staff_member) {
+      alert('Please select a staff member before completing the pre-authorization.');
+      return;
+    }
+    setSavingComplete(true);
+    try {
+      const { error } = await supabase.from('transactions').insert([{
+        booking_id: detailBooking.booking_id,
+        transaction_type: completeDraft.transaction_type || 'completion',
+        amount: Number(completeDraft.amount) || 0,
+        payment_method: completeDraft.payment_method || null,
+        cardholder_name: completeDraft.cardholder_name || null,
+        last4: completeDraft.last4 || null,
+        expiry_month: completeDraft.expiry_month ? Number(completeDraft.expiry_month) : null,
+        expiry_year: completeDraft.expiry_year ? Number(completeDraft.expiry_year) : null,
+        auth_code: completeDraft.auth_code || null,
+        reference_number: completeDraft.reference_number || null,
+        e_transfer_reference: completeDraft.e_transfer_reference || null,
+        staff_member: completeDraft.staff_member,
+        transaction_notes: completeDraft.transaction_notes || null,
+        status: 'completed',
+        charged_at: new Date().toISOString(),
+        related_transaction_id: completeTarget.transaction_id
+      }]);
+      if (error) throw error;
+      await refreshData?.();
+      setCompleteTarget(null);
+    } catch (e) {
+      alert('Pre-auth completion failed: ' + e.message);
+    } finally {
+      setSavingComplete(false);
+    }
+  };
+
   const openAddCharge = () => {
     setEditingChargeId(null);
     setChargeOriginal(null);
@@ -549,6 +626,13 @@ const GuestFolio = ({
     differs(txnDraft.expiry_year, txnDetail.expiry_year) ||
     differs(txnDraft.e_transfer_reference, txnDetail.e_transfer_reference)
   );
+  // Complete Pre-Auth is dirty if a staff member is chosen or any prefilled field changed.
+  const completeDirty = !!completeTarget && (
+    !!completeDraft.staff_member ||
+    Object.keys(completeInit).some(k => differs(completeDraft[k], completeInit[k]))
+  );
+  // Highlight helper: red until a staff member is selected, then green.
+  const completeStaffClass = completeDraft.staff_member ? 'input-edited' : 'input-required';
 
   // Run closeFn immediately when clean; otherwise defer behind a confirm dialog.
   const guardedClose = (dirty, closeFn) => {
@@ -934,7 +1018,7 @@ const GuestFolio = ({
                       <th style={{ width: '110px' }}>Transaction Type</th>
                       <th style={{ width: '110px' }}>Payment Method</th>
                       <th>Staff Member</th>
-                      <th style={{ width: '72px', textAlign: 'center' }}>Actions</th>
+                      <th style={{ width: '140px', textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -956,7 +1040,12 @@ const GuestFolio = ({
                             {voided ? (
                               <span style={{ color: '#94a3b8' }}>—</span>
                             ) : (
-                              <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
+                              <div className="txn-row-actions">
+                                <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
+                                {t?.transaction_type === 'pre_auth' && (
+                                  <button type="button" className="tool-btn sm txn-complete-btn" onClick={() => openComplete(t)}>Complete</button>
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -1123,6 +1212,172 @@ const GuestFolio = ({
                 )}
                 <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
                   Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* COMPLETE PRE-AUTHORIZATION SUB-MODAL */}
+      {completeTarget && (
+        <div className="modal-overlay">
+          <div className="modal-content edit-txn-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Complete Pre-Authorization</h3>
+              <button onClick={() => guardedClose(completeDirty, () => setCompleteTarget(null))} className="close-drawer-btn">✕</button>
+            </div>
+
+            <div className="edit-txn-body">
+              {/* Row 1: Transaction Type | Amount | Payment Method */}
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Transaction Type</label>
+                  <select
+                    value={completeDraft.transaction_type}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, transaction_type: e.target.value })}
+                    className={editedClass(completeDraft.transaction_type, completeInit.transaction_type)}
+                  >
+                    {TRANSACTION_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </div>
+                <div className="detail-field">
+                  <label>Amount ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={completeDraft.amount}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, amount: e.target.value })}
+                    className={editedClass(completeDraft.amount, completeInit.amount)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Payment Method</label>
+                  <select
+                    value={completeDraft.payment_method}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, payment_method: e.target.value })}
+                    className={editedClass(completeDraft.payment_method, completeInit.payment_method)}
+                  >
+                    <option value="">Select payment method...</option>
+                    {PAYMENT_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 2: Staff Member (required) | Cardholder Name | Last 4 */}
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Staff Member *</label>
+                  <select
+                    value={completeDraft.staff_member}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, staff_member: e.target.value })}
+                    className={completeStaffClass}
+                  >
+                    <option value="">Select staff member...</option>
+                    {staff.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="detail-field">
+                  <label>Cardholder Name</label>
+                  <input
+                    value={completeDraft.cardholder_name}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, cardholder_name: e.target.value })}
+                    className={editedClass(completeDraft.cardholder_name, completeInit.cardholder_name)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Last 4</label>
+                  <input
+                    maxLength={4}
+                    value={completeDraft.last4}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    className={editedClass(completeDraft.last4, completeInit.last4)}
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Expiry Month | Expiry Year | Auth Code */}
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Expiry Month (MM)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    placeholder="MM"
+                    value={completeDraft.expiry_month}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, expiry_month: e.target.value })}
+                    className={editedClass(completeDraft.expiry_month, completeInit.expiry_month)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Expiry Year (YYYY)</label>
+                  <input
+                    type="number"
+                    min="2020"
+                    max="2100"
+                    placeholder="YYYY"
+                    value={completeDraft.expiry_year}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, expiry_year: e.target.value })}
+                    className={editedClass(completeDraft.expiry_year, completeInit.expiry_year)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>Auth Code</label>
+                  <input
+                    value={completeDraft.auth_code}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, auth_code: e.target.value })}
+                    className={editedClass(completeDraft.auth_code, completeInit.auth_code)}
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Reference Number | E-Transfer Reference */}
+              <div className="detail-grid-2">
+                <div className="detail-field">
+                  <label>Reference Number</label>
+                  <input
+                    value={completeDraft.reference_number}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, reference_number: e.target.value })}
+                    className={editedClass(completeDraft.reference_number, completeInit.reference_number)}
+                  />
+                </div>
+                <div className="detail-field">
+                  <label>E-Transfer Reference</label>
+                  <input
+                    value={completeDraft.e_transfer_reference}
+                    onChange={(e) => setCompleteDraft({ ...completeDraft, e_transfer_reference: e.target.value })}
+                    className={editedClass(completeDraft.e_transfer_reference, completeInit.e_transfer_reference)}
+                  />
+                </div>
+              </div>
+
+              {/* Row 5: Transaction Notes (full width) */}
+              <div className="detail-field">
+                <label>Transaction Notes</label>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  value={completeDraft.transaction_notes}
+                  onChange={(e) => setCompleteDraft({ ...completeDraft, transaction_notes: e.target.value })}
+                  className={`notes-edit ${editedClass(completeDraft.transaction_notes, completeInit.transaction_notes)}`}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+                <p className="field-hint-text">{(completeDraft.transaction_notes || '').length}/500 characters</p>
+              </div>
+
+              {/* Row 6: Actions (full width) + microcopy */}
+              <div className="edit-txn-actions">
+                <button
+                  className="tool-btn primary btn-block-center"
+                  onClick={saveComplete}
+                  disabled={savingComplete || !completeDraft.staff_member}
+                >
+                  {savingComplete ? 'Saving...' : 'Complete Transaction'}
+                </button>
+                <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
+                  Completing links this payment to Pre-Auth #{String(completeTarget.transaction_id || '').slice(0, 8)} and updates the balance.
                 </p>
               </div>
             </div>
