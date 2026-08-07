@@ -221,10 +221,14 @@ const GuestFolio = ({
 
   const receivables = bookings.reduce((acc, b) => acc + Number(calculateOutstandingBalance(b)), 0);
 
-  const bookingTxns = useMemo(
-    () => (detailBooking ? transactions.filter(t => t?.booking_id === detailBooking.booking_id) : []),
-    [transactions, detailBooking]
-  );
+  // Prefer transactions embedded on the booking; fall back to the flat prop list.
+  const bookingTxns = useMemo(() => {
+    if (!detailBooking) return [];
+    if (Array.isArray(detailBooking.transactions) && detailBooking.transactions.length) {
+      return detailBooking.transactions;
+    }
+    return transactions.filter(t => t?.booking_id === detailBooking.booking_id);
+  }, [transactions, detailBooking]);
 
   const fetchFolioEntries = async (bookingId) => {
     if (!bookingId) { setFolioEntries([]); return; }
@@ -881,7 +885,7 @@ const GuestFolio = ({
                         <td>${Number(t?.amount || 0).toFixed(2)}</td>
                         <td>{t?.transaction_type || 'N/A'}</td>
                         <td>{t?.payment_method || 'N/A'}</td>
-                        <td>{t?.staff_member || 'N/A'}</td>
+                        <td>{t?.staff_member || 'Unspecified'}</td>
                         <td style={{ textAlign: 'center' }}>
                           <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
                         </td>

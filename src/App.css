@@ -407,7 +407,16 @@ body {
   gap: 12px;
 }
 .confirm-actions .tool-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  text-align: center;
   min-width: 88px;
+  padding: 10px 24px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* Guest Details header: stack Edit under the X so they never overlap. */

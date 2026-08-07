@@ -76,7 +76,9 @@ function App() {
         // Disambiguate the room_types embed via the room_type_id FK: adding rooms.code
         // (a 2nd FK to room_types) made a bare room_types(*) ambiguous (PostgREST PGRST201).
         supabase.from('rooms').select('*, room_types!room_type_id(*)').order('room_number', { ascending: true }),
-        supabase.from('bookings').select('*, guests(*), rooms(*, room_types!room_type_id(*))'),
+        // Embed transactions + folio_entries so booking.transactions is populated on refresh.
+        // room_types must stay disambiguated via room_type_id (rooms.code is a 2nd FK -> PGRST201).
+        supabase.from('bookings').select('*, guests(*), rooms(*, room_types!room_type_id(*)), folio_entries(*), transactions(*)'),
         supabase.from('transactions').select('*')
       ]);
 
