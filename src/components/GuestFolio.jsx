@@ -540,7 +540,7 @@ const GuestFolio = ({
 
       {/* DETAILS MODAL */}
       {detailBooking && (
-        <div className="folio-modal-overlay" onClick={closeDetail}>
+        <div className="folio-modal-overlay">
           <div className="folio-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
@@ -856,7 +856,7 @@ const GuestFolio = ({
 
       {/* TRANSACTION "MORE DETAILS" SUB-MODAL */}
       {txnDetail && (
-        <div className="modal-overlay" onClick={() => setTxnDetail(null)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Transaction Details</h3>
@@ -942,7 +942,7 @@ const GuestFolio = ({
 
       {/* + ADD CHARGE SUB-MODAL (folio_entries) */}
       {addChargeOpen && (
-        <div className="modal-overlay" onClick={() => !savingCharge && setAddChargeOpen(false)}>
+        <div className="modal-overlay">
           <div className="modal-content add-charge-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{editingChargeId ? 'Edit Charge' : 'Add Charge'}</h3>

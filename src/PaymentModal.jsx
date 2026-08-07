@@ -140,20 +140,15 @@ const PaymentModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    <div className="modal-overlay">
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>New Transaction</h3>
           <button
             onClick={handleClose}
-            className="close-x"
+            className="close-drawer-btn"
             disabled={isProcessing}
-            style={{
-              background: 'transparent', border: 'none', fontSize: '1.5rem', fontWeight: 300,
-              color: '#64748b', cursor: isProcessing ? 'not-allowed' : 'pointer', padding: 0,
-              width: '28px', height: '28px', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', borderRadius: '4px', opacity: isProcessing ? 0.5 : 1
-            }}
+            style={{ cursor: isProcessing ? 'not-allowed' : 'pointer', opacity: isProcessing ? 0.5 : 1 }}
           >
             ✕
           </button>

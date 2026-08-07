@@ -261,7 +261,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
       <div className="modal-content walkin-modal-wide">
         <div className="modal-header">
           <h3>Check In Guest</h3>
-          <button onClick={handleClose} className="close-x" disabled={isProcessing}>✕</button>
+          <button onClick={handleClose} className="close-drawer-btn" disabled={isProcessing}>✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="walkin-form">

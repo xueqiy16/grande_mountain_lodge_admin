@@ -236,7 +236,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       <div className="modal-content walkin-modal-wide">
         <div className="modal-header">
           <h3>New Walk In</h3>
-          <button onClick={handleClose} className="close-x">✕</button>
+          <button onClick={handleClose} className="close-drawer-btn">✕</button>
         </div>
         
         <form onSubmit={handleSubmit} className="walkin-form">
