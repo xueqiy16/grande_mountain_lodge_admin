@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
+import { calculateAmountPaid } from './lib/payments';
 const PaymentModal = ({
   isOpen,
   onClose,
@@ -24,7 +25,11 @@ const PaymentModal = ({
   const totalAmount = booking?.total_price != null
     ? Number(booking.total_price)
     : Number(calculateTotalBalance(booking));
-  const amountPaid = Number(booking?.amount_paid || 0);
+  // Settled payments only — pre-authorizations never affect the paid/outstanding balance.
+  const paidSourceTxns = existingTransactions?.length
+    ? existingTransactions
+    : (booking?.transactions || []);
+  const amountPaid = calculateAmountPaid(paidSourceTxns);
   const outstandingBalance = totalAmount - amountPaid;
 
   const guestFullName = booking?.guests

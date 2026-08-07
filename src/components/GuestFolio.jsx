@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import PaymentModal from '../PaymentModal';
 import ConfirmDialog from './ConfirmDialog';
 import { STAFF_MEMBERS } from '../lib/constants';
+import { calculateAmountPaid } from '../lib/payments';
 
 // Status filter tabs (Checked In default). "all" shows every booking.
 const STATUS_TABS = [
@@ -26,15 +27,6 @@ const isDebitEntry = (type) => type !== 'discount';
 
 // A transaction is voided via status = 'voided' (legacy rows may use type 'void').
 const isVoidedTxn = (t) => t?.status === 'voided' || t?.transaction_type === 'void';
-// Signed contribution of a transaction to amount paid. Voided => 0, refunds subtract,
-// pre-auth/pre-auth-release are holds (0), everything else (purchase/completion) adds.
-const paymentContribution = (t) => {
-  if (isVoidedTxn(t)) return 0;
-  const amt = Number(t?.amount || 0);
-  if (t?.transaction_type === 'refund') return -amt;
-  if (t?.transaction_type === 'pre_auth' || t?.transaction_type === 'pre_auth_release') return 0;
-  return amt;
-};
 // Extra charges layered on top of the base room charge (excludes room_charge, tax, discount).
 const ADDITIONAL_CHARGE_TYPES = ['fee', 'damage', 'extra_night', 'tip', 'other'];
 const sumEntries = (entries, predicate) =>
@@ -103,7 +95,9 @@ const calculateOutstandingBalance = (b) => {
   // Prefer the stored total_price (kept current by folio/date recalcs); fall back to
   // the derived base room charge for legacy rows without a persisted total.
   const total = b?.total_price != null ? Number(b.total_price) : Number(calculateTotalBalance(b));
-  return total - Number(b?.amount_paid || 0);
+  // Settled payments only — pre-authorizations never reduce the outstanding balance.
+  const paid = calculateAmountPaid(b?.transactions || []);
+  return total - paid;
 };
 
 // Green highlight when a draft value diverges from the original (edit feedback).
@@ -284,7 +278,7 @@ const GuestFolio = ({
   const levyExempt = liveNights >= LEVY_EXEMPT_NIGHTS;
   const liveTotalPrice = baseRoomCharge + additionalCharges + gstAmount + tourismLevyAmount - sumDiscounts;
   // Total Payments Paid excludes voided transactions (sum of live, non-voided rows).
-  const transactionsPaid = bookingTxns.reduce((sum, t) => sum + paymentContribution(t), 0);
+  const transactionsPaid = calculateAmountPaid(bookingTxns);
   const liveOutstanding = liveTotalPrice - transactionsPaid;
 
   const startEdit = () => {

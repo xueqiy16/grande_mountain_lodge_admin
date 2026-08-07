@@ -6,6 +6,7 @@ import WalkInModal from './WalkInModal';
 import CheckInModal from './CheckInModal';
 import GuestFolio from './components/GuestFolio';
 import { STAFF_MEMBERS } from './lib/constants';
+import { calculateAmountPaid } from './lib/payments';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './Login';
@@ -144,7 +145,8 @@ function App() {
   const calculateOutstandingBalance = (booking) => {
     if (!booking) return "0.00";
     const totalCost = Number(calculateTotalBalance(booking));
-    const paid = Number(booking.amount_paid || 0);
+    // Settled payments only — pre-authorizations never reduce the outstanding balance.
+    const paid = calculateAmountPaid(booking.transactions || []);
     return (totalCost - paid).toFixed(2);
   };
 
