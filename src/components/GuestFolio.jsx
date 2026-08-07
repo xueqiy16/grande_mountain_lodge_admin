@@ -496,17 +496,19 @@ const GuestFolio = ({
     }
     setSavingComplete(true);
     try {
-      const { error } = await supabase.from('transactions').insert([{
-        booking_id: detailBooking.booking_id,
-        transaction_type: completeDraft.transaction_type || 'completion',
+      // Explicit field-by-field payload — never spread the source pre-auth row, so
+      // no id/timestamp columns (transaction_id, display_id, id, created_at,
+      // updated_at) can leak into the insert. Column names follow the schema
+      // (last4 / transaction_notes, not last_4 / notes).
+      const completionPayload = {
+        booking_id: completeTarget.booking_id || detailBooking.booking_id,
+        transaction_type: 'completion',
         amount: Number(completeDraft.amount) || 0,
         payment_method: completeDraft.payment_method || null,
         cardholder_name: completeDraft.cardholder_name || null,
         last4: completeDraft.last4 || null,
         expiry_month: completeDraft.expiry_month ? Number(completeDraft.expiry_month) : null,
         expiry_year: completeDraft.expiry_year ? Number(completeDraft.expiry_year) : null,
-        auth_code: completeDraft.auth_code || null,
-        reference_number: completeDraft.reference_number || null,
         // E-transfer reference only applies when the payment method is e_transfer.
         e_transfer_reference: completeDraft.payment_method === 'e_transfer'
           ? (completeDraft.e_transfer_reference || null)
@@ -516,8 +518,18 @@ const GuestFolio = ({
         status: 'completed',
         charged_at: new Date().toISOString(),
         related_transaction_id: completeTarget.transaction_id
-      }]);
-      if (error) throw error;
+      };
+
+      // Safety deletion to guarantee no ID properties leak through.
+      delete completionPayload.transaction_id;
+      delete completionPayload.display_id;
+      delete completionPayload.id;
+
+      const { error } = await supabase.from('transactions').insert([completionPayload]);
+      if (error) {
+        console.error('Completion Insert Error:', error);
+        throw error;
+      }
       await refreshData?.();
       setCompleteTarget(null);
     } catch (e) {
