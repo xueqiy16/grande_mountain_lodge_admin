@@ -10,14 +10,13 @@ export const STAFF_MEMBERS = [
   'Nicholas Aki-Akpotha'
 ];
 
-// Exact `transaction_type` enum values. Both the saved value and the UI label are
-// the raw lowercase enum string (payment_method = how they paid; transaction_type
-// = what financial operation occurred — kept as separate concepts).
+// Selectable `transaction_type` values. 'void' is intentionally excluded — voiding is
+// now a soft-delete via transactions.status = 'voided', not a transaction_type.
+// (payment_method = how they paid; transaction_type = what financial operation occurred.)
 export const TRANSACTION_TYPES = [
   'pre_auth',
   'completion',
   'purchase',
   'refund',
-  'pre_auth_release',
-  'void'
+  'pre_auth_release'
 ];

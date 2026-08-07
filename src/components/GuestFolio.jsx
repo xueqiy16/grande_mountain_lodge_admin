@@ -23,6 +23,18 @@ const ENTRY_TYPES = ['room_charge', 'tax', 'damage', 'fee', 'discount', 'extra_n
 const CHARGE_TYPE_OPTIONS = ['damage', 'extra_night', 'fee', 'tip', 'discount', 'other'];
 // Everything except discount is a positive charge (debit); discount is a credit.
 const isDebitEntry = (type) => type !== 'discount';
+
+// A transaction is voided via status = 'voided' (legacy rows may use type 'void').
+const isVoidedTxn = (t) => t?.status === 'voided' || t?.transaction_type === 'void';
+// Signed contribution of a transaction to amount paid. Voided => 0, refunds subtract,
+// pre-auth/pre-auth-release are holds (0), everything else (purchase/completion) adds.
+const paymentContribution = (t) => {
+  if (isVoidedTxn(t)) return 0;
+  const amt = Number(t?.amount || 0);
+  if (t?.transaction_type === 'refund') return -amt;
+  if (t?.transaction_type === 'pre_auth' || t?.transaction_type === 'pre_auth_release') return 0;
+  return amt;
+};
 // Extra charges layered on top of the base room charge (excludes room_charge, tax, discount).
 const ADDITIONAL_CHARGE_TYPES = ['fee', 'damage', 'extra_night', 'tip', 'other'];
 const sumEntries = (entries, predicate) =>
@@ -126,10 +138,12 @@ const GuestFolio = ({
   const [payBooking, setPayBooking] = useState(null);
   const [payTxns, setPayTxns] = useState([]);
 
-  // "More Details" transaction sub-modal
+  // "Edit Transaction" sub-modal
   const [txnDetail, setTxnDetail] = useState(null);
   const [txnDraft, setTxnDraft] = useState({});
   const [savingTxn, setSavingTxn] = useState(false);
+  // Transaction pending void confirmation (null when no prompt is open).
+  const [voidTarget, setVoidTarget] = useState(null);
 
   // folio_entries ledger + "+ Add Charge" modal
   const [folioEntries, setFolioEntries] = useState([]);
@@ -269,7 +283,8 @@ const GuestFolio = ({
   const { gst: gstAmount, tourismLevy: tourismLevyAmount } = computeTaxes(baseRoomCharge, liveNights);
   const levyExempt = liveNights >= LEVY_EXEMPT_NIGHTS;
   const liveTotalPrice = baseRoomCharge + additionalCharges + gstAmount + tourismLevyAmount - sumDiscounts;
-  const transactionsPaid = Number(detailBooking?.amount_paid || 0);
+  // Total Payments Paid excludes voided transactions (sum of live, non-voided rows).
+  const transactionsPaid = bookingTxns.reduce((sum, t) => sum + paymentContribution(t), 0);
   const liveOutstanding = liveTotalPrice - transactionsPaid;
 
   const startEdit = () => {
@@ -362,8 +377,14 @@ const GuestFolio = ({
   const openTxn = (t) => {
     setTxnDetail(t);
     setTxnDraft({
-      transaction_notes: t.transaction_notes || '',
       staff_member: t.staff_member || '',
+      transaction_notes: t.transaction_notes || '',
+      auth_code: t.auth_code || '',
+      reference_number: t.reference_number || '',
+      cardholder_name: t.cardholder_name || '',
+      last4: t.last4 || '',
+      expiry_month: t.expiry_month ?? '',
+      expiry_year: t.expiry_year ?? '',
       e_transfer_reference: t.e_transfer_reference || ''
     });
   };
@@ -372,13 +393,20 @@ const GuestFolio = ({
     if (!txnDetail) return;
     setSavingTxn(true);
     try {
-      // Only non-financial fields are writable — amount/type are locked to protect the ledger.
+      // Amount / payment_method / transaction_type are locked to protect the ledger.
+      // Only metadata fields are writable here.
       const { error } = await supabase
         .from('transactions')
         .update({
+          staff_member: txnDraft.staff_member || null,
           // Direct overwrite: exact textarea string, no append/concatenation.
           transaction_notes: txnDraft.transaction_notes,
-          staff_member: txnDraft.staff_member || null,
+          auth_code: txnDraft.auth_code || null,
+          reference_number: txnDraft.reference_number || null,
+          cardholder_name: txnDraft.cardholder_name || null,
+          last4: txnDraft.last4 || null,
+          expiry_month: txnDraft.expiry_month ? Number(txnDraft.expiry_month) : null,
+          expiry_year: txnDraft.expiry_year ? Number(txnDraft.expiry_year) : null,
           e_transfer_reference: txnDraft.e_transfer_reference || null
         })
         .eq('transaction_id', txnDetail.transaction_id);
@@ -387,6 +415,25 @@ const GuestFolio = ({
       setTxnDetail(null);
     } catch (e) {
       alert('Transaction update failed: ' + e.message);
+    } finally {
+      setSavingTxn(false);
+    }
+  };
+
+  // Soft-delete: void a transaction by flagging status = 'voided' (no ledger row deletion).
+  const voidTransaction = async (t) => {
+    if (!t) return;
+    setSavingTxn(true);
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: 'voided' })
+        .eq('transaction_id', t.transaction_id);
+      if (error) throw error;
+      await refreshData?.();
+      setTxnDetail(null);
+    } catch (e) {
+      alert('Void failed: ' + e.message);
     } finally {
       setSavingTxn(false);
     }
@@ -494,8 +541,14 @@ const GuestFolio = ({
     .some(k => differs(chargeForm[k], chargeBaseline[k]));
   const txnDirty = !!txnDetail && (
     differs(txnDraft.staff_member, txnDetail.staff_member) ||
-    differs(txnDraft.e_transfer_reference, txnDetail.e_transfer_reference) ||
-    differs(txnDraft.transaction_notes, txnDetail.transaction_notes)
+    differs(txnDraft.transaction_notes, txnDetail.transaction_notes) ||
+    differs(txnDraft.auth_code, txnDetail.auth_code) ||
+    differs(txnDraft.reference_number, txnDetail.reference_number) ||
+    differs(txnDraft.cardholder_name, txnDetail.cardholder_name) ||
+    differs(txnDraft.last4, txnDetail.last4) ||
+    differs(txnDraft.expiry_month, txnDetail.expiry_month) ||
+    differs(txnDraft.expiry_year, txnDetail.expiry_year) ||
+    differs(txnDraft.e_transfer_reference, txnDetail.e_transfer_reference)
   );
 
   // Run closeFn immediately when clean; otherwise defer behind a confirm dialog.
@@ -879,18 +932,28 @@ const GuestFolio = ({
                   <tbody>
                     {bookingTxns.length === 0 ? (
                       <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8' }}>No transactions yet.</td></tr>
-                    ) : bookingTxns.map(t => (
-                      <tr key={t.transaction_id}>
-                        <td>{formatEntryDate(t?.charged_at)}</td>
-                        <td>${Number(t?.amount || 0).toFixed(2)}</td>
-                        <td>{t?.transaction_type || 'N/A'}</td>
-                        <td>{t?.payment_method || 'N/A'}</td>
-                        <td>{t?.staff_member || 'Unspecified'}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
-                        </td>
-                      </tr>
-                    ))}
+                    ) : bookingTxns.map(t => {
+                      const voided = isVoidedTxn(t);
+                      return (
+                        <tr key={t.transaction_id} className={voided ? 'txn-voided-row' : ''}>
+                          <td>{formatEntryDate(t?.charged_at)}</td>
+                          <td className={voided ? 'txn-amount-voided' : ''}>${Number(t?.amount || 0).toFixed(2)}</td>
+                          <td>
+                            {t?.transaction_type || 'N/A'}
+                            {voided && <span className="voided-badge">VOIDED</span>}
+                          </td>
+                          <td>{t?.payment_method || 'N/A'}</td>
+                          <td>{t?.staff_member || 'Unspecified'}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            {voided ? (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            ) : (
+                              <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -909,41 +972,21 @@ const GuestFolio = ({
             </div>
 
             <div className="detail-grid">
-              {/* Locked financial fields */}
+              {/* Locked core fields — change via void + new transaction only */}
               <div className="detail-field">
-                <label>Amount (locked)</label>
+                <label>Amount ($) (locked)</label>
                 <input value={`$${Number(txnDetail?.amount || 0).toFixed(2)}`} disabled readOnly />
+              </div>
+              <div className="detail-field">
+                <label>Payment Method (locked)</label>
+                <input value={txnDetail?.payment_method || 'N/A'} disabled readOnly />
               </div>
               <div className="detail-field">
                 <label>Transaction Type (locked)</label>
                 <input value={txnDetail?.transaction_type || 'N/A'} disabled readOnly />
               </div>
-              <div className="detail-field">
-                <label>Payment Method</label>
-                <input value={txnDetail?.payment_method || 'N/A'} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Cardholder Name</label>
-                <input value={txnDetail?.cardholder_name || 'N/A'} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Last 4</label>
-                <input value={txnDetail?.last4 || 'N/A'} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Expiry</label>
-                <input value={txnDetail?.expiry_month ? `${txnDetail.expiry_month}/${txnDetail.expiry_year || ''}` : 'N/A'} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Auth Code</label>
-                <input value={txnDetail?.auth_code || 'N/A'} disabled readOnly />
-              </div>
-              <div className="detail-field">
-                <label>Reference Number</label>
-                <input value={txnDetail?.reference_number || 'N/A'} disabled readOnly />
-              </div>
 
-              {/* Editable non-financial fields */}
+              {/* Editable metadata */}
               <div className="detail-field">
                 <label>Staff Member</label>
                 <select
@@ -954,6 +997,63 @@ const GuestFolio = ({
                   <option value="">Unspecified</option>
                   {staff.map(name => <option key={name} value={name}>{name}</option>)}
                 </select>
+              </div>
+              <div className="detail-field">
+                <label>Cardholder Name</label>
+                <input
+                  value={txnDraft.cardholder_name}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
+                  className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Last 4</label>
+                <input
+                  maxLength={4}
+                  value={txnDraft.last4}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                  className={editedClass(txnDraft.last4, txnDetail?.last4)}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Expiry Month (MM)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="12"
+                  placeholder="MM"
+                  value={txnDraft.expiry_month}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, expiry_month: e.target.value })}
+                  className={editedClass(txnDraft.expiry_month, txnDetail?.expiry_month)}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Expiry Year (YYYY)</label>
+                <input
+                  type="number"
+                  min="2020"
+                  max="2100"
+                  placeholder="YYYY"
+                  value={txnDraft.expiry_year}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, expiry_year: e.target.value })}
+                  className={editedClass(txnDraft.expiry_year, txnDetail?.expiry_year)}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Auth Code</label>
+                <input
+                  value={txnDraft.auth_code}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, auth_code: e.target.value })}
+                  className={editedClass(txnDraft.auth_code, txnDetail?.auth_code)}
+                />
+              </div>
+              <div className="detail-field">
+                <label>Reference Number</label>
+                <input
+                  value={txnDraft.reference_number}
+                  onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
+                  className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
+                />
               </div>
               <div className="detail-field">
                 <label>E-Transfer Reference</label>
@@ -978,9 +1078,23 @@ const GuestFolio = ({
               <p className="field-hint-text">{(txnDraft.transaction_notes || '').length}/500 characters</p>
             </div>
 
-            <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveTxn} disabled={savingTxn}>
+            <button className="tool-btn primary btn-block-center" style={{ marginTop: '16px' }} onClick={saveTxn} disabled={savingTxn}>
               {savingTxn ? 'Saving...' : 'Save Changes'}
             </button>
+            {!isVoidedTxn(txnDetail) && (
+              <button
+                className="tool-btn btn-block-center btn-danger"
+                style={{ marginTop: '10px' }}
+                onClick={() => setVoidTarget(txnDetail)}
+                disabled={savingTxn}
+              >
+                Void Transaction
+              </button>
+            )}
+
+            <p className="field-hint-text" style={{ textAlign: 'center', marginTop: '12px' }}>
+              Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
+            </p>
           </div>
         </div>
       )}
@@ -1098,6 +1212,16 @@ const GuestFolio = ({
         open={!!pendingClose}
         onYes={() => { if (pendingClose) pendingClose(); setPendingClose(null); }}
         onNo={() => setPendingClose(null)}
+      />
+
+      {/* Void transaction confirmation */}
+      <ConfirmDialog
+        open={!!voidTarget}
+        message={`Are you sure you want to void this transaction of $${Number(voidTarget?.amount || 0).toFixed(2)}? This will remove it from the guest's paid balance.`}
+        yesLabel="Confirm Void"
+        noLabel="Cancel"
+        onYes={async () => { const t = voidTarget; setVoidTarget(null); await voidTransaction(t); }}
+        onNo={() => setVoidTarget(null)}
       />
     </div>
   );

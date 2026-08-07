@@ -247,6 +247,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
           .insert([{
             booking_id: booking.booking_id,
             transaction_type: formData.transaction_type,
+            status: 'completed',
             amount: amountPaid,
             payment_method: formData.card_brand,
             cardholder_name: cardHolderName,

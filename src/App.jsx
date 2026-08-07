@@ -388,6 +388,8 @@ function App() {
                             Payments Collected (Today): <span style={{color: '#22c55e'}}>$
                               {Number(allTransactions
                                 .filter(t => {
+                                  // Voided transactions never count toward collected money.
+                                  if (t.status === 'voided') return false;
                                   // Money actually collected = purchases + captured pre-auths (completions).
                                   if (t.transaction_type !== 'purchase' && t.transaction_type !== 'completion') return false;
                                   const today = new Date().toISOString().split('T')[0];

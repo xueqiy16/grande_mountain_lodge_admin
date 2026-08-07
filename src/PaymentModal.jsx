@@ -41,13 +41,11 @@ const PaymentModal = ({
     expiry_month: '',
     expiry_year: '',
     e_transfer_reference: '',
-    related_transaction_id: '',
     transaction_notes: ''
   };
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [etransferError, setEtransferError] = useState(false);
-  const [voidError, setVoidError] = useState(false);
   const [formData, setFormData] = useState(blankForm);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -65,7 +63,6 @@ const PaymentModal = ({
       });
       setIsProcessing(false);
       setEtransferError(false);
-      setVoidError(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, booking, defaultTransactionType]);
@@ -75,7 +72,6 @@ const PaymentModal = ({
       setFormData(blankForm);
       setIsProcessing(false);
       setEtransferError(false);
-      setVoidError(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -85,7 +81,6 @@ const PaymentModal = ({
     formData.payment_method === 'visa' ||
     formData.payment_method === 'mastercard' ||
     formData.payment_method === 'amex';
-  const isVoid = formData.transaction_type === 'void';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -102,11 +97,6 @@ const PaymentModal = ({
       return;
     }
 
-    if (isVoid && !formData.related_transaction_id) {
-      setVoidError(true);
-      return;
-    }
-
     // transaction_notes stored verbatim (no headers/append).
     const transactionNotes = formData.transaction_notes.trim() ? formData.transaction_notes : null;
 
@@ -116,6 +106,7 @@ const PaymentModal = ({
       const payload = {
         booking_id: booking.booking_id,
         transaction_type: formData.transaction_type,
+        status: 'completed',
         amount,
         payment_method: formData.payment_method,
         charged_at: new Date().toISOString(),
@@ -125,7 +116,6 @@ const PaymentModal = ({
         expiry_month: requiresCardDetails && formData.expiry_month ? Number(formData.expiry_month) : null,
         expiry_year: requiresCardDetails && formData.expiry_year ? Number(formData.expiry_year) : null,
         e_transfer_reference: isEtransfer ? formData.e_transfer_reference.trim() : null,
-        related_transaction_id: isVoid ? formData.related_transaction_id : null,
         transaction_notes: transactionNotes
       };
 
@@ -190,7 +180,7 @@ const PaymentModal = ({
               <select
                 required
                 value={formData.transaction_type}
-                onChange={(e) => { setFormData({ ...formData, transaction_type: e.target.value, related_transaction_id: '' }); setVoidError(false); }}
+                onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value })}
                 disabled={isProcessing}
               >
                 {TRANSACTION_TYPES.map(type => (
@@ -253,33 +243,6 @@ const PaymentModal = ({
               </select>
             </div>
           </div>
-
-          {/* Void: choose which prior transaction is being reversed */}
-          {isVoid && (
-            <div className="form-grid-3" style={{ gridTemplateColumns: '1fr' }}>
-              <div className="form-group">
-                <label>Transaction to Void *</label>
-                <select
-                  value={formData.related_transaction_id}
-                  onChange={(e) => { setFormData({ ...formData, related_transaction_id: e.target.value }); setVoidError(false); }}
-                  className={voidError ? 'input-error' : ''}
-                  aria-invalid={voidError}
-                  disabled={isProcessing}
-                >
-                  <option value="">Select transaction to void...</option>
-                  {existingTransactions
-                    .filter(t => t.transaction_type !== 'void')
-                    .map(t => (
-                      <option key={t.transaction_id} value={t.transaction_id}>
-                        {t.transaction_type} · {t.payment_method} · ${Number(t.amount).toFixed(2)}
-                        {t.charged_at ? ` · ${new Date(t.charged_at).toLocaleDateString()}` : ''}
-                      </option>
-                    ))}
-                </select>
-                {voidError && <p className="field-error-text">Please select the transaction being voided.</p>}
-              </div>
-            </div>
-          )}
 
           {/* Card metadata (Visa / Mastercard / Amex only) */}
           {requiresCardDetails && (

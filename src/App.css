@@ -419,6 +419,44 @@ body {
   line-height: 1;
 }
 
+/* Full-width, centered modal action buttons (Save Changes / Void Transaction). */
+.btn-block-center {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0;
+}
+.tool-btn.btn-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.tool-btn.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+/* Voided transaction rows. */
+.txn-voided-row {
+  background: #f8fafc;
+}
+.txn-amount-voided {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+.voided-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
 /* Guest Details header: stack Edit under the X so they never overlap. */
 .folio-header-actions {
   display: flex;
