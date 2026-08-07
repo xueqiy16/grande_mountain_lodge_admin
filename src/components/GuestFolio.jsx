@@ -470,7 +470,7 @@ const GuestFolio = ({
   // transaction. Staff Member is intentionally left blank (required before save).
   const openComplete = (t) => {
     // Human-readable auto-note: amount + original charge date, plus an (Updated ...)
-    // suffix when the pre-auth was later modified. charged_at is the schema's charge
+    // suffix when the pre-auth was later modified. charged_at is the charge
     // timestamp; updated_at is the last-modified timestamp.
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
@@ -478,7 +478,7 @@ const GuestFolio = ({
       if (isNaN(dt.getTime())) return '';
       return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
-    const createdDate = formatDate(t?.charged_at || t?.created_at);
+    const createdDate = formatDate(t?.charged_at);
     const updatedDate = formatDate(t?.updated_at);
     const formattedAmount = Number(t?.amount || 0).toFixed(2);
     let dateSuffix = createdDate ? `on ${createdDate}` : '';
@@ -1059,7 +1059,7 @@ const GuestFolio = ({
                 <table className="pms-table txn-ledger-table ledger-compact">
                   <thead>
                     <tr>
-                      <th style={{ width: '140px' }}>Date</th>
+                      <th style={{ width: '140px' }}>Updated At</th>
                       <th style={{ width: '80px' }}>Amount</th>
                       <th style={{ width: '110px' }}>Transaction Type</th>
                       <th style={{ width: '110px' }}>Payment Method</th>
