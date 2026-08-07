@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import PaymentModal from '../PaymentModal';
 import ConfirmDialog from './ConfirmDialog';
-import { STAFF_MEMBERS, TRANSACTION_TYPES } from '../lib/constants';
+import { STAFF_MEMBERS } from '../lib/constants';
 import { calculateAmountPaid } from '../lib/payments';
 
 // Payment method enum values (value) + human-readable labels for select inputs.
@@ -458,7 +458,16 @@ const GuestFolio = ({
   // Open the "Complete Pre-Authorization" modal pre-filled from the source pre_auth
   // transaction. Staff Member is intentionally left blank (required before save).
   const openComplete = (t) => {
-    const preAuthId = String(t?.transaction_id || '');
+    // Human-readable auto-note: amount + original pre-auth date (charged_at is the
+    // schema's timestamp column; fall back to created_at if present).
+    const preAuthTs = t?.charged_at || t?.created_at;
+    const preAuthDate = preAuthTs
+      ? new Date(preAuthTs).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '';
+    const formattedAmount = Number(t?.amount || 0).toFixed(2);
+    const autoNote = preAuthDate
+      ? `Completion for Pre-Auth of $${formattedAmount} on ${preAuthDate}`
+      : `Completion for Pre-Auth of $${formattedAmount}`;
     const draft = {
       transaction_type: 'completion',
       amount: t?.amount != null ? String(t.amount) : '',
@@ -471,7 +480,7 @@ const GuestFolio = ({
       reference_number: t?.reference_number || '',
       e_transfer_reference: t?.e_transfer_reference || '',
       staff_member: '',
-      transaction_notes: `Completion for Pre-Auth #${preAuthId.slice(0, 8)}`
+      transaction_notes: autoNote
     };
     setCompleteTarget(t);
     setCompleteInit(draft);
@@ -1236,35 +1245,19 @@ const GuestFolio = ({
               <div className="detail-grid">
                 <div className="detail-field">
                   <label>Transaction Type</label>
-                  <select
-                    value={completeDraft.transaction_type}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, transaction_type: e.target.value })}
-                    className={editedClass(completeDraft.transaction_type, completeInit.transaction_type)}
-                  >
-                    {TRANSACTION_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                  </select>
+                  <input value={completeDraft.transaction_type || 'N/A'} disabled readOnly />
                 </div>
                 <div className="detail-field">
                   <label>Amount ($)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={completeDraft.amount}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, amount: e.target.value })}
-                    className={editedClass(completeDraft.amount, completeInit.amount)}
-                  />
+                  <input value={`$${Number(completeDraft.amount || 0).toFixed(2)}`} disabled readOnly />
                 </div>
                 <div className="detail-field">
                   <label>Payment Method</label>
-                  <select
-                    value={completeDraft.payment_method}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, payment_method: e.target.value })}
-                    className={editedClass(completeDraft.payment_method, completeInit.payment_method)}
-                  >
-                    <option value="">Select payment method...</option>
-                    {PAYMENT_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <input
+                    value={(PAYMENT_METHOD_OPTIONS.find(o => o.value === completeDraft.payment_method)?.label) || completeDraft.payment_method || 'N/A'}
+                    disabled
+                    readOnly
+                  />
                 </div>
               </div>
 
@@ -1283,20 +1276,11 @@ const GuestFolio = ({
                 </div>
                 <div className="detail-field">
                   <label>Cardholder Name</label>
-                  <input
-                    value={completeDraft.cardholder_name}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, cardholder_name: e.target.value })}
-                    className={editedClass(completeDraft.cardholder_name, completeInit.cardholder_name)}
-                  />
+                  <input value={completeDraft.cardholder_name || 'N/A'} disabled readOnly />
                 </div>
                 <div className="detail-field">
                   <label>Last 4</label>
-                  <input
-                    maxLength={4}
-                    value={completeDraft.last4}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                    className={editedClass(completeDraft.last4, completeInit.last4)}
-                  />
+                  <input value={completeDraft.last4 || 'N/A'} disabled readOnly />
                 </div>
               </div>
 
@@ -1304,36 +1288,16 @@ const GuestFolio = ({
               <div className={completeDraft.payment_method === 'e_transfer' ? 'detail-grid' : 'detail-grid-2'}>
                 <div className="detail-field">
                   <label>Expiry Month (MM)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    placeholder="MM"
-                    value={completeDraft.expiry_month}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, expiry_month: e.target.value })}
-                    className={editedClass(completeDraft.expiry_month, completeInit.expiry_month)}
-                  />
+                  <input value={completeDraft.expiry_month || 'N/A'} disabled readOnly />
                 </div>
                 <div className="detail-field">
                   <label>Expiry Year (YYYY)</label>
-                  <input
-                    type="number"
-                    min="2020"
-                    max="2100"
-                    placeholder="YYYY"
-                    value={completeDraft.expiry_year}
-                    onChange={(e) => setCompleteDraft({ ...completeDraft, expiry_year: e.target.value })}
-                    className={editedClass(completeDraft.expiry_year, completeInit.expiry_year)}
-                  />
+                  <input value={completeDraft.expiry_year || 'N/A'} disabled readOnly />
                 </div>
                 {completeDraft.payment_method === 'e_transfer' && (
                   <div className="detail-field">
                     <label>E-Transfer Reference</label>
-                    <input
-                      value={completeDraft.e_transfer_reference}
-                      onChange={(e) => setCompleteDraft({ ...completeDraft, e_transfer_reference: e.target.value })}
-                      className={editedClass(completeDraft.e_transfer_reference, completeInit.e_transfer_reference)}
-                    />
+                    <input value={completeDraft.e_transfer_reference || 'N/A'} disabled readOnly />
                   </div>
                 )}
               </div>
@@ -1362,7 +1326,10 @@ const GuestFolio = ({
                   {savingComplete ? 'Saving...' : 'Complete Transaction'}
                 </button>
                 <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
-                  Completing links this payment to Pre-Auth #{String(completeTarget.transaction_id || '').slice(0, 8)} and updates the balance.
+                  Completing links this payment to this Pre-Auth and updates the balance.
+                </p>
+                <p className="field-hint-text" style={{ textAlign: 'center', margin: '8px 0 0' }}>
+                  To change any fields, please exit this pop up and edit with the Edit button.
                 </p>
               </div>
             </div>
