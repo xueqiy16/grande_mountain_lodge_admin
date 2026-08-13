@@ -3,12 +3,22 @@ import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
 import { computeStayCost } from './lib/costing';
-// Fresh blank reservation state (check_in defaults to today each time it's built).
+// Local calendar date as YYYY-MM-DD. Built from the local getFullYear/Month/Date
+// (NOT toISOString(), which is UTC and can jump a day across the midnight boundary).
+const getLocalTodayString = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Fresh blank reservation state (check_in defaults to local today each time it's built).
 // transaction_type defaults to pre_auth (guest starting a stay); staff can switch
 // to purchase when charging the full amount up front.
 const getInitialFormData = () => ({
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
-  check_in: new Date().toISOString().split('T')[0], // Default to today
+  check_in: getLocalTodayString(), // Walk-in arrives TODAY (local date)
   check_out: '', adults: 1, children: 0, pets: 0,
   card_brand: '', card_holder_name: '', last4: '', expiry_month: '', expiry_year: '',
   etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
@@ -21,6 +31,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   const [selectedType, setSelectedType] = useState('');
   const [roomError, setRoomError] = useState(false);
   const [etransferError, setEtransferError] = useState(false);
+  const [checkInError, setCheckInError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(getInitialFormData());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -36,6 +47,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     setSelectedType('');
     setRoomError(false);
     setEtransferError(false);
+    setCheckInError(false);
     setIsSubmitting(false);
   };
 
@@ -79,6 +91,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       fetchData();
       setRoomError(false);
       setEtransferError(false);
+      setCheckInError(false);
     }
   }, [isOpen]);
 
@@ -88,6 +101,13 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // A Walk-In is an immediate arrival: the check-in date MUST be today's local
+    // calendar date. Block submission (and surface an inline error) otherwise.
+    if (formData.check_in !== getLocalTodayString()) {
+      setCheckInError(true);
+      return;
+    }
 
     // The <select> value is always a string. Trim it defensively in case any
     // label text or whitespace leaks into the value.
@@ -122,11 +142,9 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const today = new Date().toISOString().split('T')[0];
-    // LOGIC: future check-in => 'confirmed' reservation; today => 'checked_in'.
-    // Values must match the booking_status_type enum exactly (lowercase/hyphenated).
-    const isFutureBooking = formData.check_in > today;
-    const finalStatus = isFutureBooking ? 'confirmed' : 'checked_in';
+    // A walk-in always arrives today, so the guest is checked in immediately.
+    // Value must match the booking_status_type enum exactly (lowercase/underscored).
+    const finalStatus = 'checked_in';
 
     // 1. Create Guest
     const { data: guestData, error: guestError } = await supabase
@@ -206,8 +224,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
     const bookingId = bookingData.booking_id;
 
-    // Room status sync (reserved/occupied) is owned by the DB trigger
-    // tr_update_room_status, which reads NEW.booking_status on insert.
+    // Room status transition (available -> occupied) is owned SOLELY by the DB
+    // trigger tr_update_room_status, which reads NEW.booking_status ('checked_in')
+    // on this insert. No client-side rooms.status write happens here, so a failed
+    // booking insert above leaves the room 'available'. "reserved" is never used.
 
     // 3. Record the collected payment as a transaction whenever money changed hands
     // (full, partial, or deposit). All card/payment details live here, not on bookings.
@@ -237,7 +257,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       }
     }
 
-    onBookingComplete(isFutureBooking ? `Reservation created for Room ${targetRoom.room_number}` : `Checked into Room ${targetRoom.room_number}!`);
+    onBookingComplete(`Checked into Room ${targetRoom.room_number}!`);
     handleClose();
   };
 
@@ -291,7 +311,27 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
 
           {/* Schedule Group */}
           <div className="form-grid-3">
-            <div className="form-group"><label>Check In *</label><input type="date" value={formData.check_in} required onChange={(e) => setFormData({...formData, check_in: e.target.value})} /></div>
+            <div className="form-group">
+              <label>Check In *</label>
+              <input
+                type="date"
+                value={formData.check_in}
+                min={getLocalTodayString()}
+                max={getLocalTodayString()}
+                required
+                className={checkInError ? 'input-error' : ''}
+                aria-invalid={checkInError}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Walk-ins are today only: flag any non-today selection immediately.
+                  setCheckInError(value !== getLocalTodayString());
+                  setFormData({ ...formData, check_in: value });
+                }}
+              />
+              {checkInError && (
+                <p className="field-error-text">Walk-in check-in date must be today.</p>
+              )}
+            </div>
             <div className="form-group"><label>Check Out *</label><input type="date" required onChange={(e) => setFormData({...formData, check_out: e.target.value})} /></div>
             <div className="form-group"><label>Phone</label><input type="text" required onChange={(e) => setFormData({...formData, phone: e.target.value})} /></div>
           </div>

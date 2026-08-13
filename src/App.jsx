@@ -114,7 +114,7 @@ function App() {
     : null;
 
   // Primary Status Helper - determines the single primary status for a room.
-  // NOTE: compares DB enum values, but RETURNS UI labels (Occupied/Reserved/...).
+  // NOTE: compares DB enum values, but RETURNS UI labels (Occupied/Available/...).
   const getPrimaryStatus = (room, bookings) => {
     // Out-of-service is a physical lockdown state and outranks everything else:
     // the room must never read as sellable to front-desk staff.
@@ -126,7 +126,7 @@ function App() {
       (b.booking_status === 'checked_in' || b.booking_status === 'confirmed')
     );
     if (activeB?.booking_status === 'checked_in') return 'Occupied';
-    if (activeB?.booking_status === 'confirmed') return 'Reserved';
+    if (activeB?.booking_status === 'confirmed') return 'Available';
     if (room.status === 'house-keeping') return 'Dirty';
     return 'Available';
   };
@@ -472,7 +472,7 @@ function App() {
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>{booking.rooms?.room_number}</td>
                                     <td>{booking.check_in} to {booking.check_out}</td>
-                                    <td><span className="status-badge status-reserved">Reserved</span></td>
+                                    <td><span className="status-badge status-confirmed">Confirmed</span></td>
                                     <td>
                                       <button onClick={() => handleMarkNoShow(booking.booking_id)} className="tool-btn">
                                         Mark as No-Show
@@ -515,14 +515,14 @@ function App() {
                           <button 
                             onClick={() => handleCancelReservation(activeBooking?.booking_id)} 
                             className="tool-btn"
-                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
+                            disabled={!selectedRoom || activeBooking?.booking_status !== 'confirmed'}
                           >
                             Cancel Reservation
                           </button>
                           <button 
                             onClick={() => handleMarkNoShow(activeBooking?.booking_id)} 
                             className="tool-btn"
-                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
+                            disabled={!selectedRoom || activeBooking?.booking_status !== 'confirmed'}
                           >
                             Mark as No-Show
                           </button>
@@ -544,26 +544,6 @@ function App() {
                             className="tool-btn"
                           >
                             Check-Out
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Toolbar for Reserved tab - Cancel Reservation + Mark as No-Show */}
-                      {currentTab === 'Reserved' && (
-                        <div className="toolbar" style={{ marginTop: '10px' }}>
-                          <button 
-                            onClick={() => handleCancelReservation(activeBooking?.booking_id)} 
-                            className="tool-btn"
-                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
-                          >
-                            Cancel Reservation
-                          </button>
-                          <button 
-                            onClick={() => handleMarkNoShow(activeBooking?.booking_id)} 
-                            className="tool-btn"
-                            disabled={!selectedRoom || getPrimaryStatus(selectedRoom, bookings) !== 'Reserved'}
-                          >
-                            Mark as No-Show
                           </button>
                         </div>
                       )}
@@ -647,7 +627,7 @@ function App() {
                         </div>
                       )}
 
-                      {(currentTab !== 'Check-In' && currentTab !== 'Check-Out' && currentTab !== 'Reserved') && (
+                      {(currentTab !== 'Check-In' && currentTab !== 'Check-Out') && (
                         <div className="room-grid">
                           {rooms.filter(room => {
                             const primaryStatus = getPrimaryStatus(room, bookings);
@@ -685,30 +665,6 @@ function App() {
                         </div>
                       )}
 
-                      {currentTab === 'Reserved' && (
-                        <div className="room-grid">
-                          {rooms.filter(room => {
-                            // Exclude Out Of Service rooms from room-grid
-                            if (room.status === 'out-of-service') return false;
-                            
-                            const primaryStatus = getPrimaryStatus(room, bookings);
-                            const activeB = bookings.find(b => b.room_id === room.room_id);
-                            const guestName = (activeB?.guests?.first_name || "").toLowerCase();
-                            const nameMatch = guestName.includes(searchTerm.toLowerCase());
-                            const roomMatch = room.room_number.toString().includes(searchTerm);
-                            return primaryStatus === 'Reserved' && (roomMatch || nameMatch);
-                          }).map(room => {
-                            const reservation = bookings.find(b => b.room_id === room.room_id && b.booking_status === 'confirmed');
-                            return (
-                              <div key={room.room_id} className={`room-card ${selectedRoom?.room_id === room.room_id ? 'selected' : ''}`} onClick={() => setSelectedRoom(room)}>
-                                <div className="room-header"><span className="room-number">{room.room_number}</span><span className="status-badge status-reserved">Reserved</span></div>
-                                <div className="room-info-type">{room.room_types?.name}</div>
-                                <div className="room-info-price">Guest: {reservation?.guests?.first_name} {reservation?.guests?.last_name}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
                     </> // FIXED: Fragment closed here
                   )}
 

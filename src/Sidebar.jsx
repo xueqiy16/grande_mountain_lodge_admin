@@ -3,7 +3,7 @@ import React from 'react';
 const Sidebar = ({ currentTab, setTab }) => {
   const menuGroups = [
     { label: "Front Desk", items: ["Check-In", "Check-Out"] },
-    { label: "Rooms", items: ["All", "Available", "Occupied", "Reserved", "Housekeeping"] },
+    { label: "Rooms", items: ["All", "Available", "Occupied", "Housekeeping"] },
     { label: "Financials", items: ["Guest Folio", "Daily Audit"] },
     { label: "System", items: ["Inventory"] }
   ];

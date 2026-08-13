@@ -293,7 +293,6 @@ body {
 
 .status-available { background: #f0fdf4; color: #16a34a; }
 .status-occupied { background: #eff6ff; color: #2563eb; }
-.status-reserved { background: #fdf4ff; color: #701a75; border: 1px solid #fae8ff; }
 .status-dirty { background: #fffbeb; color: #d97706; }
 .status-out-of-service { background: #dc2626; color: #ffffff; }
 
@@ -321,14 +320,6 @@ body {
 .room-card-oos .room-info-type,
 .room-card-oos .room-info-price {
   color: #64748b;
-}
-
-.reserved-tag {
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-  font-size: 0.6rem;
-  padding: 2px 6px;
 }
 
 .room-info-type { color: #64748b; font-size: 0.85rem; margin-bottom: 4px; }
