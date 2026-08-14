@@ -1159,11 +1159,13 @@ const GuestFolio = ({
                   />
                 </div>
                 <div className="detail-field">
-                  <div className="field-label-row">
-                    <label>Reference Number</label>
-                    <span className="lock-badge">(Locked)</span>
-                  </div>
-                  <input value={txnDraft.reference_number || 'N/A'} disabled readOnly />
+                  <label>Reference Number</label>
+                  <input
+                    placeholder="e.g. 987654321"
+                    value={txnDraft.reference_number}
+                    onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
+                    className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
+                  />
                 </div>
               </div>
 

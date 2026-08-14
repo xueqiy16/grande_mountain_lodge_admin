@@ -43,6 +43,8 @@ const PaymentModal = ({
     staff_member: '',
     cardholder_name: '',
     last4: '',
+    auth_code: '',
+    reference_number: '',
     e_transfer_reference: '',
     transaction_notes: ''
   };
@@ -84,6 +86,9 @@ const PaymentModal = ({
     formData.payment_method === 'visa' ||
     formData.payment_method === 'mastercard' ||
     formData.payment_method === 'amex';
+  // Auth Code + Reference Number are manual documentation fields transcribed from the
+  // physical Moneris terminal receipt. Shown for any terminal-processed card method.
+  const showTerminalFields = requiresCardDetails || formData.payment_method === 'interac_debit';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -116,6 +121,8 @@ const PaymentModal = ({
         staff_member: formData.staff_member || null,
         cardholder_name: requiresCardDetails ? (formData.cardholder_name.trim() || null) : null,
         last4: requiresCardDetails ? (formData.last4.trim() || null) : null,
+        auth_code: showTerminalFields ? (formData.auth_code.trim() || null) : null,
+        reference_number: showTerminalFields ? (formData.reference_number.trim() || null) : null,
         e_transfer_reference: isEtransfer ? formData.e_transfer_reference.trim() : null,
         transaction_notes: transactionNotes
       };
@@ -187,7 +194,7 @@ const PaymentModal = ({
                     ...formData,
                     payment_method: e.target.value,
                     // Reset method-specific fields on switch (keep cardholder pre-fill for cards).
-                    last4: '', e_transfer_reference: '',
+                    last4: '', auth_code: '', reference_number: '', e_transfer_reference: '',
                     cardholder_name: guestFullName
                   });
                 }}
@@ -245,31 +252,60 @@ const PaymentModal = ({
             </div>
           </div>
 
-          {/* Card metadata (Visa / Mastercard / Amex only) */}
-          {requiresCardDetails && (
+          {/* Card details + terminal documentation.
+              Cardholder / Last 4 apply to Visa / Mastercard / Amex only; Auth Code and
+              Reference Number are shown for those plus Interac Debit (manual entry from
+              the physical Moneris terminal receipt — both optional). */}
+          {showTerminalFields && (
             <>
               <div className="form-section-title" style={{ marginTop: '20px' }}>Card Details</div>
-              <div className="form-group">
-                <label>Cardholder Name</label>
-                <input
-                  type="text"
-                  value={formData.cardholder_name}
-                  onChange={(e) => setFormData({ ...formData, cardholder_name: e.target.value })}
-                  disabled={isProcessing}
-                  placeholder="Name on card"
-                />
-              </div>
-              <div className="form-grid-3">
+              {requiresCardDetails && (
+                <>
+                  <div className="form-group">
+                    <label>Cardholder Name</label>
+                    <input
+                      type="text"
+                      value={formData.cardholder_name}
+                      onChange={(e) => setFormData({ ...formData, cardholder_name: e.target.value })}
+                      disabled={isProcessing}
+                      placeholder="Name on card"
+                    />
+                  </div>
+                  <div className="form-grid-3">
+                    <div className="form-group">
+                      <label>Last 4 Digits *</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={formData.last4}
+                        onChange={(e) => setFormData({ ...formData, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                        disabled={isProcessing}
+                        placeholder="1234"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+              <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <div className="form-group">
-                  <label>Last 4 Digits *</label>
+                  <label>Auth Code</label>
                   <input
                     type="text"
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={formData.last4}
-                    onChange={(e) => setFormData({ ...formData, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    value={formData.auth_code}
+                    onChange={(e) => setFormData({ ...formData, auth_code: e.target.value })}
                     disabled={isProcessing}
-                    placeholder="1234"
+                    placeholder="e.g. 123456"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Reference Number</label>
+                  <input
+                    type="text"
+                    value={formData.reference_number}
+                    onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
+                    disabled={isProcessing}
+                    placeholder="e.g. 987654321"
                   />
                 </div>
               </div>
