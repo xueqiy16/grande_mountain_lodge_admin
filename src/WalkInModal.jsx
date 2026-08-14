@@ -20,7 +20,7 @@ const getInitialFormData = () => ({
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
   check_in: getLocalTodayString(), // Walk-in arrives TODAY (local date)
   check_out: '', adults: 1, children: 0, pets: 0,
-  card_brand: '', card_holder_name: '', last4: '', expiry_month: '', expiry_year: '',
+  card_brand: '', card_holder_name: '', last4: '',
   etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
   notes: ''
 });
@@ -243,8 +243,6 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
           payment_method: formData.card_brand,
           cardholder_name: cardHolderName,
           last4: requiresCardDetails ? formData.last4 : null,
-          expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
-          expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null,
           e_transfer_reference: eTransferReference,
           transaction_notes: null,
           staff_member: formData.staff_member,
@@ -410,7 +408,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                     ...formData,
                     card_brand: value,
                     ...(clearsCard
-                      ? { card_holder_name: '', last4: '', expiry_month: '', expiry_year: '' }
+                      ? { card_holder_name: '', last4: '' }
                       : {}),
                     ...(clearsEtransfer ? { etransfer_reference: '' } : {})
                   });
@@ -505,26 +503,6 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                     maxLength="4"
                     value={formData.last4}
                     onChange={(e) => setFormData({...formData, last4: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Expiry Month (MM) *</label>
-                  <input
-                    type="number"
-                    placeholder="MM"
-                    value={formData.expiry_month}
-                    onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Expiry Year (YYYY) *</label>
-                  <input
-                    type="number"
-                    placeholder="YYYY"
-                    value={formData.expiry_year}
-                    onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
                     required
                   />
                 </div>

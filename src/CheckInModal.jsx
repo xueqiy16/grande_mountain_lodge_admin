@@ -7,7 +7,7 @@ import { computeStayCost } from './lib/costing';
 const getBlankFormData = () => ({
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
   check_in: '', check_out: '', adults: 1, children: 0, pets: 0,
-  card_brand: '', cardholder_name: '', last4: '', expiry_month: '', expiry_year: '',
+  card_brand: '', cardholder_name: '', last4: '',
   etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
   notes: ''
 });
@@ -75,8 +75,6 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         card_brand: '',
         cardholder_name: `${g.first_name || ''} ${g.last_name || ''}`.trim(),
         last4: '',
-        expiry_month: '',
-        expiry_year: '',
         etransfer_reference: '',
         amount_paid: '',
         staff_member: '',
@@ -110,7 +108,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     check_in: booking?.check_in || '', check_out: booking?.check_out || '',
     adults: booking?.adults ?? 1, children: booking?.children ?? 0, pets: booking?.pets ?? 0,
     card_brand: '', cardholder_name: `${baselineGuest.first_name || ''} ${baselineGuest.last_name || ''}`.trim(),
-    last4: '', expiry_month: '', expiry_year: '', etransfer_reference: '',
+    last4: '', etransfer_reference: '',
     amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
     notes: booking?.booking_notes || ''
   };
@@ -255,8 +253,6 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
             payment_method: formData.card_brand,
             cardholder_name: cardHolderName,
             last4: requiresCardDetails ? formData.last4 : null,
-            expiry_month: requiresCardDetails ? (parseInt(formData.expiry_month) || null) : null,
-            expiry_year: requiresCardDetails ? (parseInt(formData.expiry_year) || null) : null,
             e_transfer_reference: eTransferReference,
             transaction_notes: null,
             staff_member: formData.staff_member,
@@ -409,7 +405,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                     ...formData,
                     card_brand: value,
                     ...(clearsCard
-                      ? { last4: '', expiry_month: '', expiry_year: '' }
+                      ? { last4: '' }
                       : {}),
                     ...(clearsEtransfer ? { etransfer_reference: '' } : {})
                   });
@@ -511,28 +507,6 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                     maxLength="4"
                     value={formData.last4}
                     onChange={(e) => setFormData({...formData, last4: e.target.value.replace(/\D/g, '')})}
-                    required
-                    disabled={isProcessing}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Expiry Month (MM) *</label>
-                  <input
-                    type="number"
-                    placeholder="MM"
-                    value={formData.expiry_month}
-                    onChange={(e) => setFormData({...formData, expiry_month: e.target.value})}
-                    required
-                    disabled={isProcessing}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Expiry Year (YYYY) *</label>
-                  <input
-                    type="number"
-                    placeholder="YYYY"
-                    value={formData.expiry_year}
-                    onChange={(e) => setFormData({...formData, expiry_year: e.target.value})}
                     required
                     disabled={isProcessing}
                   />

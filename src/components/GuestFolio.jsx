@@ -410,8 +410,6 @@ const GuestFolio = ({
       reference_number: t.reference_number || '',
       cardholder_name: t.cardholder_name || '',
       last4: t.last4 || '',
-      expiry_month: t.expiry_month ?? '',
-      expiry_year: t.expiry_year ?? '',
       e_transfer_reference: t.e_transfer_reference || ''
     });
   };
@@ -432,8 +430,6 @@ const GuestFolio = ({
           reference_number: txnDraft.reference_number || null,
           cardholder_name: txnDraft.cardholder_name || null,
           last4: txnDraft.last4 || null,
-          expiry_month: txnDraft.expiry_month ? Number(txnDraft.expiry_month) : null,
-          expiry_year: txnDraft.expiry_year ? Number(txnDraft.expiry_year) : null,
           e_transfer_reference: txnDraft.e_transfer_reference || null
         })
         .eq('transaction_id', txnDetail.transaction_id);
@@ -496,8 +492,6 @@ const GuestFolio = ({
       payment_method: t?.payment_method || '',
       cardholder_name: t?.cardholder_name || '',
       last4: t?.last4 || '',
-      expiry_month: t?.expiry_month ?? '',
-      expiry_year: t?.expiry_year ?? '',
       auth_code: t?.auth_code || '',
       reference_number: t?.reference_number || '',
       e_transfer_reference: t?.e_transfer_reference || '',
@@ -529,8 +523,6 @@ const GuestFolio = ({
         payment_method: completeDraft.payment_method || null,
         cardholder_name: completeDraft.cardholder_name || null,
         last4: completeDraft.last4 || null,
-        expiry_month: completeDraft.expiry_month ? Number(completeDraft.expiry_month) : null,
-        expiry_year: completeDraft.expiry_year ? Number(completeDraft.expiry_year) : null,
         // E-transfer reference only applies when the payment method is e_transfer.
         e_transfer_reference: completeDraft.payment_method === 'e_transfer'
           ? (completeDraft.e_transfer_reference || null)
@@ -668,8 +660,6 @@ const GuestFolio = ({
     differs(txnDraft.reference_number, txnDetail.reference_number) ||
     differs(txnDraft.cardholder_name, txnDetail.cardholder_name) ||
     differs(txnDraft.last4, txnDetail.last4) ||
-    differs(txnDraft.expiry_month, txnDetail.expiry_month) ||
-    differs(txnDraft.expiry_year, txnDetail.expiry_year) ||
     differs(txnDraft.e_transfer_reference, txnDetail.e_transfer_reference)
   );
   // Complete Pre-Auth is dirty if a staff member is chosen or any prefilled field changed.
@@ -1197,30 +1187,6 @@ const GuestFolio = ({
                       className={editedClass(txnDraft.last4, txnDetail?.last4)}
                     />
                   </div>
-                  <div className="detail-field">
-                    <label>Expiry Month (MM) *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      placeholder="MM"
-                      value={txnDraft.expiry_month}
-                      onChange={(e) => setTxnDraft({ ...txnDraft, expiry_month: e.target.value })}
-                      className={editedClass(txnDraft.expiry_month, txnDetail?.expiry_month)}
-                    />
-                  </div>
-                  <div className="detail-field">
-                    <label>Expiry Year (YYYY) *</label>
-                    <input
-                      type="number"
-                      min="2020"
-                      max="2100"
-                      placeholder="YYYY"
-                      value={txnDraft.expiry_year}
-                      onChange={(e) => setTxnDraft({ ...txnDraft, expiry_year: e.target.value })}
-                      className={editedClass(txnDraft.expiry_year, txnDetail?.expiry_year)}
-                    />
-                  </div>
                 </div>
               )}
 
@@ -1330,14 +1296,6 @@ const GuestFolio = ({
                   <div className="detail-field">
                     <label>Last 4 Digits *</label>
                     <input value={completeDraft.last4 || 'N/A'} disabled readOnly />
-                  </div>
-                  <div className="detail-field">
-                    <label>Expiry Month (MM) *</label>
-                    <input value={completeDraft.expiry_month || 'N/A'} disabled readOnly />
-                  </div>
-                  <div className="detail-field">
-                    <label>Expiry Year (YYYY) *</label>
-                    <input value={completeDraft.expiry_year || 'N/A'} disabled readOnly />
                   </div>
                 </div>
               )}

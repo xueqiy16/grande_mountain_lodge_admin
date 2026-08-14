@@ -43,8 +43,6 @@ const PaymentModal = ({
     staff_member: '',
     cardholder_name: '',
     last4: '',
-    expiry_month: '',
-    expiry_year: '',
     e_transfer_reference: '',
     transaction_notes: ''
   };
@@ -118,8 +116,6 @@ const PaymentModal = ({
         staff_member: formData.staff_member || null,
         cardholder_name: requiresCardDetails ? (formData.cardholder_name.trim() || null) : null,
         last4: requiresCardDetails ? (formData.last4.trim() || null) : null,
-        expiry_month: requiresCardDetails && formData.expiry_month ? Number(formData.expiry_month) : null,
-        expiry_year: requiresCardDetails && formData.expiry_year ? Number(formData.expiry_year) : null,
         e_transfer_reference: isEtransfer ? formData.e_transfer_reference.trim() : null,
         transaction_notes: transactionNotes
       };
@@ -191,7 +187,7 @@ const PaymentModal = ({
                     ...formData,
                     payment_method: e.target.value,
                     // Reset method-specific fields on switch (keep cardholder pre-fill for cards).
-                    last4: '', expiry_month: '', expiry_year: '', e_transfer_reference: '',
+                    last4: '', e_transfer_reference: '',
                     cardholder_name: guestFullName
                   });
                 }}
@@ -274,30 +270,6 @@ const PaymentModal = ({
                     onChange={(e) => setFormData({ ...formData, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                     disabled={isProcessing}
                     placeholder="1234"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Expiry Month (MM) *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    value={formData.expiry_month}
-                    onChange={(e) => setFormData({ ...formData, expiry_month: e.target.value })}
-                    disabled={isProcessing}
-                    placeholder="MM"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Expiry Year (YYYY) *</label>
-                  <input
-                    type="number"
-                    min="2020"
-                    max="2100"
-                    value={formData.expiry_year}
-                    onChange={(e) => setFormData({ ...formData, expiry_year: e.target.value })}
-                    disabled={isProcessing}
-                    placeholder="YYYY"
                   />
                 </div>
               </div>
