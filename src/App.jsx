@@ -5,6 +5,7 @@ import './App.css';
 import WalkInModal from './WalkInModal';
 import CheckInModal from './CheckInModal';
 import GuestFolio from './components/GuestFolio';
+import CalendarView from './components/CalendarView';
 import { STAFF_MEMBERS } from './lib/constants';
 import { calculateAmountPaid, roundToCents } from './lib/payments';
 import { computeTotalStayCost } from './lib/costing';
@@ -18,7 +19,7 @@ function App() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
-  const [currentTab, setCurrentTab] = useState('In-House');
+  const [currentTab, setCurrentTab] = useState('Calendar');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedFolioId, setSelectedFolioId] = useState(null);
   const profileNameByEmail = {
@@ -304,7 +305,13 @@ function App() {
                 <Sidebar currentTab={currentTab} setTab={setCurrentTab} />
 
                 <main className="main-content">
-                  {currentTab === 'Inventory' ? (
+                  {currentTab === 'Calendar' ? (
+                    <CalendarView
+                      bookings={bookings}
+                      getOutstandingBalance={calculateOutstandingBalance}
+                      onOpenFolio={(id) => { setSelectedFolioId(id); setCurrentTab('Guest Folio'); }}
+                    />
+                  ) : currentTab === 'Inventory' ? (
                     <div className="folio-view">
                       <div className="view-header">
                         <h2>Inventory & Maintenance Manager</h2>
