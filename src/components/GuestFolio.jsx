@@ -1543,7 +1543,7 @@ const GuestFolio = ({
                 <label>Description</label>
                 <input
                   type="text"
-                  placeholder="e.g. Pet Fee, Late Checkout, GST 5%"
+                  placeholder="Description will appear on the guest receipt"
                   value={chargeForm.description}
                   onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
                   disabled={savingCharge || isInactive}

@@ -334,7 +334,8 @@ body {
 .detail-drawer {
   position: fixed;
   bottom: 0;
-  left: 260px;
+  /* Flush against the sidebar's right edge (sidebar width = 200px). */
+  left: 200px;
   right: 0;
   background: white;
   border-top: 1px solid var(--border);
@@ -532,7 +533,14 @@ body {
 }
 
 .checkout-btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; cursor: pointer; }
-.checkout-btn:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; opacity: 0.6; }
+.checkout-btn:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; opacity: 1; }
+
+/* Cleared for checkout (outstanding balance <= 0): green call-to-action. */
+.checkout-btn.checkout-ready { background: #16a34a; border-color: #15803d; }
+.checkout-btn.checkout-ready:hover { background: #15803d; }
+
+/* Single-line ellipsis for tight table cells. */
+.truncate-cell { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .late-checkout-tag { background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; font-size: 0.6rem; padding: 2px 6px; margin-left: 8px; vertical-align: middle; }
 .empty-view { text-align: center; padding: 60px; background: white; border-radius: 12px; border: 1px solid var(--border); color: #94a3b8; font-weight: 600; margin-top: 20px; }
@@ -1817,6 +1825,19 @@ textarea.input-required {
   background: #fff;
   font-size: 0.9rem;
   line-height: 1.5;
+  /* Flex column so the footer can be pinned to the bottom of the page. */
+  display: flex;
+  flex-direction: column;
+  min-height: 9.5in;
+}
+
+.receipt-body {
+  flex: 1 1 auto;
+}
+
+.receipt-footer {
+  margin-top: auto;
+  padding-top: 16px;
 }
 
 .print-head {
@@ -1914,20 +1935,21 @@ textarea.input-required {
 
 .print-slogan {
   text-align: center;
-  margin: 22px 0;
+  margin: 18px 0 4px;
   font-style: italic;
   font-size: 0.88rem;
 }
 
 .print-logo-wrap {
   text-align: center;
-  margin-top: 16px;
+  margin-top: 4px;
 }
 
 .print-logo {
-  max-width: 120px;
-  max-height: 56px;
+  max-width: 160px;
+  max-height: 64px;
   height: auto;
+  margin: 0 auto;
   object-fit: contain;
 }
 
@@ -1988,24 +2010,44 @@ textarea.input-required {
     top: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: none !important;
     margin: 0 !important;
     padding: 0 !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     overflow: visible !important;
+    /* Full page height flex column so the footer anchors to the bottom margin. */
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: calc(100vh - 20mm) !important;
+    height: 100% !important;
+    justify-content: space-between !important;
   }
 
   .print-doc {
     width: 100% !important;
     max-width: 100% !important;
+    min-height: 0 !important;
     margin: 0 auto !important;
     padding: 0 !important;
     color: #000 !important;
     background: #fff !important;
     font-size: 9pt !important;
     line-height: 1.3 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+  }
+
+  .receipt-body {
+    flex: 1 1 auto !important;
+  }
+
+  .receipt-footer {
+    margin-top: auto !important;
+    padding-top: 8px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* Keep logical blocks from splitting across pages. */
@@ -2083,13 +2125,13 @@ textarea.input-required {
 
   .print-slogan {
     font-size: 8.5pt !important;
-    margin: 12px 0 !important;
+    margin: 10px 0 2px !important;
   }
 
   .print-logo {
-    max-height: 48px !important;
+    max-height: 64px !important;
     object-fit: contain !important;
-    margin: 8px auto 0 !important;
+    margin: 2px auto 0 !important;
     filter: none !important;
   }
 }

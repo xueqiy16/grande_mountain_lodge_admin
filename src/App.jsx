@@ -607,14 +607,15 @@ function App() {
                           <div className="view-header"><h2>Expected Check-Outs</h2><div className="date-selector"><label>DATE</label><input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div></div>
                           {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').length > 0 ? (
                             <table className="pms-table">
-                              <thead><tr><th>Guest Name</th><th>Room</th><th className="col-tight">Stay Dates</th><th className="col-tight">Outstanding</th><th className="col-tight">Action</th></tr></thead>
+                              <thead><tr><th style={{ width: '150px' }}>Guest Name</th><th style={{ width: '110px' }}>Room</th><th className="col-tight">Stay Dates</th><th className="col-tight">Outstanding</th><th style={{ width: '240px' }}>Action</th></tr></thead>
                               <tbody>
                                 {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').map(booking => {
                                   const rt = booking.rooms?.room_types;
                                   const roomTypeLabel = rt?.code || rt?.name || booking.rooms?.code || 'N/A';
+                                  const clearedForCheckout = roundToCents(calculateOutstandingBalance(booking)) <= 0;
                                   return (
                                   <tr key={booking.booking_id}>
-                                    <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
+                                    <td style={{ maxWidth: '150px' }}><strong className="truncate-cell">{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>
                                       <div className="guest-cell">
                                         <strong>Room {booking.rooms?.room_number ?? 'N/A'}</strong>
@@ -623,11 +624,12 @@ function App() {
                                     </td>
                                     <td className="col-tight">{booking.check_in} to {booking.check_out}</td>
                                     <td className="col-tight" style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
-                                    <td className="col-tight">
-                                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <td>
+                                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                                         <button
                                           onClick={() => handleCheckOut(booking)}
-                                          className={`checkout-btn ${roundToCents(calculateOutstandingBalance(booking)) > 0 ? 'checkout-warning' : ''}`}
+                                          disabled={!clearedForCheckout}
+                                          className={`checkout-btn ${clearedForCheckout ? 'checkout-ready' : ''}`}
                                         >
                                           Check-Out
                                         </button>

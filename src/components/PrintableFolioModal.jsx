@@ -110,6 +110,7 @@ const PrintableFolioModal = ({ booking, supabase, onClose }) => {
         </div>
 
         <div className="print-doc">
+          <div className="receipt-body">
           {/* Document header */}
           <div className="print-head">
             <h1>Grande Mountain Lodge</h1>
@@ -192,16 +193,19 @@ const PrintableFolioModal = ({ booking, supabase, onClose }) => {
             <div className="print-summary-row"><span>Total Payment</span><span>{money(totalPayment)}</span></div>
             <div className="print-summary-row print-total"><span>Balance</span><span>{money(balance)}</span></div>
           </div>
-
-          {/* Footer */}
-          <div className="print-signature">
-            Signature: <span className="print-sign-line">&nbsp;</span>
           </div>
-          <p className="print-slogan">
-            Thank you for choosing Grande Mountain Lodge. Relax, we&apos;ve got you covered.
-          </p>
-          <div className="print-logo-wrap">
-            <img src="/assets/logo_black.png" alt="Grande Mountain Lodge" className="print-logo" />
+
+          {/* Footer — pinned to the bottom of the page */}
+          <div className="receipt-footer">
+            <div className="print-signature">
+              Signature: <span className="print-sign-line">&nbsp;</span>
+            </div>
+            <p className="print-slogan">
+              Thank you for choosing Grande Mountain Lodge. Relax, we&apos;ve got you covered.
+            </p>
+            <div className="print-logo-wrap">
+              <img src="/assets/logo_black.png" alt="Grande Mountain Lodge" className="print-logo" />
+            </div>
           </div>
         </div>
       </div>
