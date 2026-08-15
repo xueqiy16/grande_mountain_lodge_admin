@@ -115,13 +115,18 @@ const formatBookingStatus = (status) => {
   return labels[status] || status || 'N/A';
 };
 
-// Stay total = nights * nightly rate.
+// Stay total = nights * nightly rate. Prefers the saved bookings.room_price, only
+// falling back to the room type's default rate for legacy rows with no saved price.
 const calculateTotalBalance = (b) => {
-  if (!b || !b.check_in || !b.check_out || !b.rooms?.room_types?.nightly_rate) return 0;
+  if (!b || !b.check_in || !b.check_out) return 0;
+  const rate = b?.room_price != null && b.room_price !== ''
+    ? Number(b.room_price)
+    : Number(b?.rooms?.room_types?.nightly_rate || 0);
+  if (!rate) return 0;
   const start = new Date(b.check_in + 'T00:00:00');
   const end = new Date(b.check_out + 'T00:00:00');
   const nights = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-  return Number(nights) * Number(b.rooms.room_types.nightly_rate);
+  return Number(nights) * rate;
 };
 
 const calculateOutstandingBalance = (b) => {
@@ -313,14 +318,21 @@ const GuestFolio = ({
 
   // Live pricing. In edit mode the base charge tracks the draft dates so the
   // read-only Total Nights / Total Price reflect the pending change immediately.
-  // Resolve nightly_rate strictly through the room relationship: rooms -> room_types.
+  // Effective nightly rate STRICTLY prefers the price saved on the booking
+  // (bookings.room_price, entered/overridden at check-in or reservation). Only
+  // legacy rows with no saved price fall back to the room type's default rate.
   const roomType = resolveRoom(detailBooking).room_types || {};
-  const nightlyRate = Number(roomType.nightly_rate || 0);
-  // Display rate for the read-only "Room Cost per Night" field: prefer the room
-  // type's nightly_rate, fall back to a booking-level rate, else null => 'N/A'.
-  const roomNightlyRate = roomType?.nightly_rate != null
-    ? Number(roomType.nightly_rate)
-    : (detailBooking?.nightly_rate != null ? Number(detailBooking.nightly_rate) : null);
+  const savedRoomPrice = detailBooking?.room_price != null && detailBooking.room_price !== ''
+    ? Number(detailBooking.room_price)
+    : null;
+  const nightlyRate = savedRoomPrice != null ? savedRoomPrice : Number(roomType.nightly_rate || 0);
+  // Display rate for the read-only "Room Cost per Night" field: saved room_price
+  // first, then the room type's nightly_rate, then a booking-level rate, else 'N/A'.
+  const roomNightlyRate = savedRoomPrice != null
+    ? savedRoomPrice
+    : (roomType?.nightly_rate != null
+      ? Number(roomType.nightly_rate)
+      : (detailBooking?.nightly_rate != null ? Number(detailBooking.nightly_rate) : null));
   const effCheckIn = isEditing ? bookingDraft.check_in : detailBooking?.check_in;
   const effCheckOut = isEditing ? bookingDraft.check_out : detailBooking?.check_out;
   // Nights basis: stored booking.total_nights in view mode; live date math while editing.
@@ -947,7 +959,7 @@ const GuestFolio = ({
                 </div>
                 <div className="detail-field">
                   <label>Room Cost per Night</label>
-                  <input value={roomNightlyRate != null ? `$${roomNightlyRate.toFixed(2)} / night` : 'N/A'} disabled readOnly />
+                  <input value={roomNightlyRate != null ? `$${roomNightlyRate.toFixed(2)} CAD / night` : 'N/A'} disabled readOnly />
                 </div>
 
                 {/* Row 2: Check-in | Check-out | Total Nights */}
@@ -1074,7 +1086,7 @@ const GuestFolio = ({
                       <tr>
                         <td>{formatEntryDate(effCheckIn)}</td>
                         <td>room_charge</td>
-                        <td>Base Room Charge ({liveNights} night{liveNights === 1 ? '' : 's'} × ${nightlyRate.toFixed(2)})</td>
+                        <td>{liveNights} x ${nightlyRate.toFixed(2)}</td>
                         <td>${baseRoomCharge.toFixed(2)}</td>
                         <td>-</td>
                         <td>-</td>
