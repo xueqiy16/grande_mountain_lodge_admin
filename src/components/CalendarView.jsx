@@ -28,8 +28,10 @@ const BAR_GAP = 4;     // px vertical gap between stacked (overlapping) bars
 const ROW_PAD = 8;     // px vertical padding inside a room-type row
 const HALF_SPLIT = 15; // first half = days 1..15, second half = 16..end
 const POPOVER_W = 320;
-const POPOVER_H = 230; // estimated height used for deterministic placement
-const EDGE_PAD = 24;   // min gap from the viewport edges (keeps close button visible)
+const POPOVER_H = 230;  // estimated height used for deterministic placement
+const RIGHT_MARGIN = 48; // generous buffer from the right edge (keeps close button clear)
+const LEFT_MARGIN = 16;  // buffer from the left edge
+const EDGE_PAD = 16;     // vertical buffer from top/bottom edges
 
 // Local YYYY-MM-DD (never toISOString(), which is UTC and can shift a day).
 const toISO = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -168,11 +170,12 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
     const typeIdx = ROOM_TYPE_ROWS.indexOf(booking?.rooms?.room_types?.name);
     const below = typeIdx > -1 && typeIdx < 3;
 
-    // Horizontal: clamp so the card (incl. its close button) never spills past the
-    // right edge or hides behind the left edge — leaving a 24px gap on both sides.
+    // Horizontal: clamp so the card (incl. its close button + box shadow) never
+    // spills past the right edge or hides behind the left edge — a generous 48px
+    // gap on the right, 16px on the left.
     const calculatedLeft = rect.left + rect.width / 2 - POPOVER_W / 2;
-    const maxLeft = window.innerWidth - POPOVER_W - EDGE_PAD;
-    const left = Math.min(Math.max(calculatedLeft, EDGE_PAD), Math.max(EDGE_PAD, maxLeft));
+    const maxLeft = window.innerWidth - POPOVER_W - RIGHT_MARGIN;
+    const left = Math.min(Math.max(calculatedLeft, LEFT_MARGIN), Math.max(LEFT_MARGIN, maxLeft));
 
     // Vertical: below for top 3 room types, above for bottom 4 (clamped to viewport).
     let top = below ? rect.bottom + 8 : rect.top - POPOVER_H - 8;

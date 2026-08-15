@@ -201,7 +201,7 @@ const PrintableFolioModal = ({ booking, supabase, onClose }) => {
             Thank you for choosing Grande Mountain Lodge. Relax, we&apos;ve got you covered.
           </p>
           <div className="print-logo-wrap">
-            <img src="/assets/logo.png" alt="Grande Mountain Lodge" className="print-logo" />
+            <img src="/assets/logo_black.png" alt="Grande Mountain Lodge" className="print-logo" />
           </div>
         </div>
       </div>
