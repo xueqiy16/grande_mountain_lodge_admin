@@ -1763,3 +1763,218 @@ textarea.input-required {
   margin-top: 12px;
   justify-content: center;
 }
+
+/* ============================================================
+   PRINTABLE GUEST FOLIO RECEIPT (black & white)
+   ============================================================ */
+.print-folio-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  z-index: 3000;
+}
+
+.print-folio {
+  background: #fff;
+  color: #000;
+  width: 100%;
+  max-width: 720px;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  position: relative;
+  margin: auto;
+}
+
+.print-folio-toolbar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+  z-index: 2;
+}
+
+.print-doc {
+  padding: 32px 40px 40px;
+  color: #000;
+  background: #fff;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.print-head {
+  text-align: center;
+}
+
+.print-head h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+  color: #000;
+}
+
+.print-head p {
+  margin: 2px 0;
+  font-size: 0.84rem;
+}
+
+.print-rule {
+  border: none;
+  border-top: 1px solid #000;
+  margin: 14px 0;
+}
+
+.print-section-title {
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 18px 0 12px;
+  color: #000;
+}
+
+.print-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 16px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+}
+
+.print-k {
+  font-weight: 700;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.print-table th,
+.print-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.print-table th {
+  font-weight: 700;
+  border-bottom: 1px solid #000;
+}
+
+.print-table .print-amt {
+  text-align: right;
+}
+
+.print-summary {
+  width: 320px;
+  margin-left: auto;
+}
+
+.print-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 3px 0;
+  font-size: 0.88rem;
+}
+
+.print-summary-row.print-total {
+  font-weight: 800;
+  font-size: 0.98rem;
+}
+
+.print-signature {
+  margin-top: 30px;
+  font-size: 0.9rem;
+}
+
+.print-sign-line {
+  display: inline-block;
+  border-bottom: 1px solid #000;
+  min-width: 340px;
+}
+
+.print-slogan {
+  text-align: center;
+  margin: 22px 0;
+  font-style: italic;
+  font-size: 0.88rem;
+}
+
+.print-logo-wrap {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.print-logo {
+  max-width: 120px;
+  height: auto;
+  filter: grayscale(1);
+}
+
+/* ---- Print media: single clean page, hide all app chrome ---- */
+@media print {
+  @page {
+    size: auto;
+    margin: 15mm;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  /* Hide everything, then reveal only the receipt subtree. */
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-folio,
+  .print-folio * {
+    visibility: visible !important;
+  }
+
+  .print-folio-overlay {
+    position: absolute !important;
+    inset: auto !important;
+    left: 0 !important;
+    top: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+    display: block !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  .print-folio {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .print-doc {
+    padding: 0 !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  .print-no-print {
+    display: none !important;
+  }
+}

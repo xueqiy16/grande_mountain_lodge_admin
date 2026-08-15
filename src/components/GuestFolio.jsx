@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import PaymentModal from '../PaymentModal';
 import ConfirmDialog from './ConfirmDialog';
+import PrintableFolioModal from './PrintableFolioModal';
 import { STAFF_MEMBERS } from '../lib/constants';
 import { calculateAmountPaid, roundToCents } from '../lib/payments';
 
@@ -160,6 +161,8 @@ const GuestFolio = ({
   const [activeTab, setActiveTab] = useState('checked_in');
   const [search, setSearch] = useState('');
   const [detailId, setDetailId] = useState(null);
+  // Booking whose printable B&W receipt is open (null when closed).
+  const [receiptBooking, setReceiptBooking] = useState(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [guestDraft, setGuestDraft] = useState({});
@@ -822,6 +825,7 @@ const GuestFolio = ({
                 <td>
                   <div className="folio-row-actions">
                     <button className="tool-btn sm" onClick={() => setDetailId(b.booking_id)}>Details</button>
+                    <button className="tool-btn sm" onClick={() => setReceiptBooking(b)}>Receipt</button>
                     {!isInactiveStatus(b?.booking_status) && (
                       <button className="tool-btn sm primary" onClick={() => openPayment(b)}>New Transaction</button>
                     )}
@@ -832,6 +836,15 @@ const GuestFolio = ({
           })}
         </tbody>
       </table>
+
+      {/* PRINTABLE RECEIPT MODAL */}
+      {receiptBooking && (
+        <PrintableFolioModal
+          booking={receiptBooking}
+          supabase={supabase}
+          onClose={() => setReceiptBooking(null)}
+        />
+      )}
 
       {/* DETAILS MODAL */}
       {detailBooking && (
