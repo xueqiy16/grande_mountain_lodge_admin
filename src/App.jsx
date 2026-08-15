@@ -274,7 +274,7 @@ function App() {
                   </div>
                   <div className="header-search-container">
                     <input type="text" placeholder="Search by Room # or Guest Name..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                    <button onClick={() => setIsWalkInOpen(true)} className="tool-btn primary" style={{ marginLeft: '15px' }}>+ New Walk In</button>
+                    <button onClick={() => setIsWalkInOpen(true)} className="tool-btn primary" style={{ marginLeft: '15px' }}>+ New Reservation</button>
                   </div>
                   <div className="header-profile-container">
                     <div className="header-profile" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>

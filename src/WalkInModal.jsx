@@ -17,6 +17,7 @@ const getLocalTodayString = () => {
 // transaction_type defaults to pre_auth (guest starting a stay); staff can switch
 // to purchase when charging the full amount up front.
 const getInitialFormData = () => ({
+  reservation_type: 'walk_in', // walk_in | phone | online (matches bookings.reservation_type enum)
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
   check_in: getLocalTodayString(), // Walk-in arrives TODAY (local date)
   check_out: '', adults: 1, children: 0, pets: 0,
@@ -64,6 +65,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     handleClose();
   };
 
+  // Walk-ins are immediate arrivals (checked in + payment collected now); Phone/Online
+  // are future reservations (status 'confirmed', no upfront payment or transaction).
+  const isWalkIn = formData.reservation_type === 'walk_in';
+
   // card_brand holds the selected payment_method enum value (visa/mastercard/amex/interac_debit/cash/e_transfer).
   const isEtransfer = formData.card_brand === 'e_transfer';
   // Card metadata only applies to real credit cards (not Cash/Debit/E-transfer/empty).
@@ -105,9 +110,11 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // A Walk-In is an immediate arrival: the check-in date MUST be today's local
-    // calendar date. Block submission (and surface an inline error) otherwise.
-    if (formData.check_in !== getLocalTodayString()) {
+    // Date rules depend on the reservation type:
+    //  - Walk-In: check-in MUST be today's local date (immediate arrival).
+    //  - Phone/Online: check-in must be today OR a future date (no past dates).
+    const today = getLocalTodayString();
+    if (isWalkIn ? formData.check_in !== today : formData.check_in < today) {
       setCheckInError(true);
       return;
     }
@@ -127,27 +134,33 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       return;
     }
 
-    // Strict validation: E-transfer requires a reference number.
-    if (isEtransfer && !formData.etransfer_reference.trim()) {
-      setEtransferError(true);
-      return;
-    }
+    // Payment is only collected for Walk-Ins. Phone/Online reservations log no
+    // upfront transaction, so all payment validation is skipped for them.
+    let amountPaid = 0;
+    if (isWalkIn) {
+      // Strict validation: E-transfer requires a reference number.
+      if (isEtransfer && !formData.etransfer_reference.trim()) {
+        setEtransferError(true);
+        return;
+      }
 
-    // Amount paid is entered by staff; save exactly what they enter (0 allowed for
-    // reservations with no deposit). Reject negatives / non-numeric input.
-    const amountPaid = Number(formData.amount_paid || 0);
-    if (isNaN(amountPaid) || amountPaid < 0) {
-      alert("Please enter a valid amount paid (0 or greater).");
-      return;
+      // Amount paid is entered by staff; save exactly what they enter (0 allowed for
+      // reservations with no deposit). Reject negatives / non-numeric input.
+      amountPaid = Number(formData.amount_paid || 0);
+      if (isNaN(amountPaid) || amountPaid < 0) {
+        alert("Please enter a valid amount paid (0 or greater).");
+        return;
+      }
     }
 
     // Guard against duplicate transaction/booking creation on double-submit.
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    // A walk-in always arrives today, so the guest is checked in immediately.
-    // Value must match the booking_status_type enum exactly (lowercase/underscored).
-    const finalStatus = 'checked_in';
+    // Walk-Ins arrive now (checked in → room becomes occupied via DB trigger).
+    // Phone/Online are future reservations (confirmed → room stays available until
+    // check-in). Values must match the booking_status_type enum exactly.
+    const finalStatus = isWalkIn ? 'checked_in' : 'confirmed';
 
     // 1. Create Guest
     const { data: guestData, error: guestError } = await supabase
@@ -202,6 +215,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       .insert([{
         guest_id: guestData.guest_id,
         room_id: targetRoom.room_id,
+        reservation_type: formData.reservation_type,
         check_in: formData.check_in,
         check_out: formData.check_out,
         adults: Number(formData.adults) || 0,
@@ -235,7 +249,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     // 3. Record the collected payment as a transaction whenever money changed hands
     // (full, partial, or deposit). All card/payment details live here, not on bookings.
     // card_brand holds the transactions.payment_method enum value; charged_at is now.
-    if (amountPaid > 0) {
+    // Only Walk-Ins collect payment at creation; Phone/Online log no transaction.
+    if (isWalkIn && amountPaid > 0) {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert([{
@@ -260,7 +275,11 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       }
     }
 
-    onBookingComplete(`Checked into Room ${targetRoom.room_number}!`);
+    onBookingComplete(
+      isWalkIn
+        ? `Checked into Room ${targetRoom.room_number}!`
+        : `Reservation confirmed for Room ${targetRoom.room_number}!`
+    );
     handleClose();
   };
 
@@ -277,32 +296,55 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     <div className="modal-overlay">
       <div className="modal-content walkin-modal-wide">
         <div className="modal-header">
-          <h3>New Walk In</h3>
+          <h3>New Reservation</h3>
           <button onClick={requestClose} className="close-drawer-btn">✕</button>
         </div>
         
         <form onSubmit={handleSubmit} className="walkin-form">
           <div className="walkin-form-body">
-          <div className="form-section" style={{ marginBottom: '20px' }}>
-            <label>Room Type</label>
-            <select
-              required
-              value={selectedType}
-              onChange={(e) => { setSelectedType(e.target.value); setRoomError(false); }}
-              className={roomError ? 'input-error' : ''}
-              aria-invalid={roomError}
-              aria-describedby={roomError ? 'room-category-error' : undefined}
-            >
-              <option value="">Select Room Type...</option>
-              {roomTypes.map(t => (
-                <option key={t.room_type_id} value={t.room_type_id}>{t.name} (${t.nightly_rate})</option>
-              ))}
-            </select>
-            {roomError && (
-              <p id="room-category-error" className="field-error-text">
-                No rooms available for this room category.
-              </p>
-            )}
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: '20px' }}>
+            <div className="form-group">
+              <label>Reservation Type *</label>
+              <select
+                required
+                value={formData.reservation_type}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // Re-validate the check-in date against the new type's rules.
+                  const today = getLocalTodayString();
+                  const nextWalkIn = value === 'walk_in';
+                  setCheckInError(
+                    nextWalkIn ? formData.check_in !== today : formData.check_in < today
+                  );
+                  setFormData({ ...formData, reservation_type: value });
+                }}
+              >
+                <option value="walk_in">Walk In</option>
+                <option value="phone">Phone</option>
+                <option value="online">Online</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Room Type *</label>
+              <select
+                required
+                value={selectedType}
+                onChange={(e) => { setSelectedType(e.target.value); setRoomError(false); }}
+                className={roomError ? 'input-error' : ''}
+                aria-invalid={roomError}
+                aria-describedby={roomError ? 'room-category-error' : undefined}
+              >
+                <option value="">Select Room Type...</option>
+                {roomTypes.map(t => (
+                  <option key={t.room_type_id} value={t.room_type_id}>{t.name} (${t.nightly_rate})</option>
+                ))}
+              </select>
+              {roomError && (
+                <p id="room-category-error" className="field-error-text">
+                  No rooms available for this room category.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Identity Group */}
@@ -320,19 +362,23 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                 type="date"
                 value={formData.check_in}
                 min={getLocalTodayString()}
-                max={getLocalTodayString()}
+                // Walk-ins are locked to today; Phone/Online allow any future date.
+                max={isWalkIn ? getLocalTodayString() : undefined}
                 required
                 className={checkInError ? 'input-error' : ''}
                 aria-invalid={checkInError}
                 onChange={(e) => {
                   const value = e.target.value;
-                  // Walk-ins are today only: flag any non-today selection immediately.
-                  setCheckInError(value !== getLocalTodayString());
+                  const today = getLocalTodayString();
+                  // Walk-in: must be exactly today. Phone/Online: no past dates.
+                  setCheckInError(isWalkIn ? value !== today : value < today);
                   setFormData({ ...formData, check_in: value });
                 }}
               />
               {checkInError && (
-                <p className="field-error-text">Walk-in check-in date must be today.</p>
+                <p className="field-error-text">
+                  {isWalkIn ? 'Walk-in check-in date must be today.' : 'Check-in date cannot be in the past.'}
+                </p>
               )}
             </div>
             <div className="form-group"><label>Check Out *</label><input type="date" required onChange={(e) => setFormData({...formData, check_out: e.target.value})} /></div>
@@ -397,6 +443,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
             </div>
           )}
 
+          {isWalkIn && (
+          <>
           <div className="form-section-title">Payment Details</div>
           <div className="form-grid-3">
             <div className="form-group">
@@ -540,6 +588,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
               </>
             )}
           </div>
+          </>
+          )}
 
           <div className="form-section-title">Booking Notes</div>
           <div className="form-group">
