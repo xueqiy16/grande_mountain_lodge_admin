@@ -6,7 +6,7 @@ import WalkInModal from './WalkInModal';
 import CheckInModal from './CheckInModal';
 import GuestFolio from './components/GuestFolio';
 import { STAFF_MEMBERS } from './lib/constants';
-import { calculateAmountPaid } from './lib/payments';
+import { calculateAmountPaid, roundToCents } from './lib/payments';
 import { computeTotalStayCost } from './lib/costing';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -144,7 +144,7 @@ function App() {
   };
 
   const calculateOutstandingBalance = (booking) => {
-    if (!booking) return "0.00";
+    if (!booking) return 0;
     // Full stay cost = base + additional fees + GST + tourism levy − discounts,
     // computed live from folio_entries so it matches the Guest Details ledger.
     const { totalStayCost } = computeTotalStayCost(
@@ -155,7 +155,8 @@ function App() {
     );
     // Settled payments only — pre-authorizations never reduce the outstanding balance.
     const paid = calculateAmountPaid(booking.transactions || []);
-    return (totalStayCost - paid).toFixed(2);
+    // Round to cents so tiny float drift never surfaces as a phantom 1-cent balance.
+    return roundToCents(totalStayCost - paid);
   };
 
   // Helper function to normalize dates to YYYY-MM-DD format
@@ -202,8 +203,11 @@ function App() {
   const handleCheckOut = async (targetBooking = null) => {
     const bookingToProcess = targetBooking || activeBooking;
     if (!bookingToProcess) return;
-    const balance = Number(calculateOutstandingBalance(bookingToProcess));
-    if (balance > 0) {
+    // Compare on cents, not raw floats: treat anything ≤ $0.00 (including tiny
+    // negative/positive float drift) as fully settled and cleared for check-out.
+    const balance = roundToCents(calculateOutstandingBalance(bookingToProcess));
+    const isClearedForCheckout = balance <= 0.00;
+    if (!isClearedForCheckout) {
       alert(`Settlement Required: This guest has an outstanding balance of $${balance.toFixed(2)}. Please record a payment before checking out.`);
       setSelectedFolioId(bookingToProcess.booking_id);
       setCurrentTab('Guest Folio');
@@ -610,8 +614,8 @@ function App() {
                                     <td className="col-tight" style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
                                     <td className="col-tight">
                                       <button 
-                                        onClick={() => handleCheckOut(booking)} 
-                                        className={`checkout-btn ${Number(calculateOutstandingBalance(booking)) > 0 ? 'checkout-warning' : ''}`}
+                                        onClick={() => handleCheckOut(booking)}
+                                        className={`checkout-btn ${roundToCents(calculateOutstandingBalance(booking)) > 0 ? 'checkout-warning' : ''}`}
                                       >
                                         Check-Out
                                       </button>

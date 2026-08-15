@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import PaymentModal from '../PaymentModal';
 import ConfirmDialog from './ConfirmDialog';
 import { STAFF_MEMBERS } from '../lib/constants';
-import { calculateAmountPaid } from '../lib/payments';
+import { calculateAmountPaid, roundToCents } from '../lib/payments';
 
 // Payment method enum values (value) + human-readable labels for select inputs.
 const PAYMENT_METHOD_OPTIONS = [
@@ -117,7 +117,8 @@ const calculateOutstandingBalance = (b) => {
   const total = b?.total_price != null ? Number(b.total_price) : Number(calculateTotalBalance(b));
   // Settled payments only — pre-authorizations never reduce the outstanding balance.
   const paid = calculateAmountPaid(b?.transactions || []);
-  return total - paid;
+  // Round to cents so tiny float drift never surfaces as a phantom 1-cent balance.
+  return roundToCents(total - paid);
 };
 
 // Green highlight when a draft value diverges from the original (edit feedback).
@@ -257,7 +258,9 @@ const GuestFolio = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, activeTab, search, guests, rooms]);
 
-  const receivables = bookings.reduce((acc, b) => acc + Number(calculateOutstandingBalance(b)), 0);
+  const receivables = roundToCents(
+    bookings.reduce((acc, b) => acc + Number(calculateOutstandingBalance(b)), 0)
+  );
 
   // Prefer transactions embedded on the booking; fall back to the flat prop list.
   const bookingTxns = useMemo(() => {
@@ -311,10 +314,10 @@ const GuestFolio = ({
   const sumDiscounts = sumEntries(folioEntries, e => e.entry_type === 'discount');
   const { gst: gstAmount, tourismLevy: tourismLevyAmount } = computeTaxes(baseRoomCharge, liveNights);
   const levyExempt = liveNights >= LEVY_EXEMPT_NIGHTS;
-  const liveTotalPrice = baseRoomCharge + additionalCharges + gstAmount + tourismLevyAmount - sumDiscounts;
+  const liveTotalPrice = roundToCents(baseRoomCharge + additionalCharges + gstAmount + tourismLevyAmount - sumDiscounts);
   // Total Payments Paid excludes voided transactions (sum of live, non-voided rows).
-  const transactionsPaid = calculateAmountPaid(bookingTxns);
-  const liveOutstanding = liveTotalPrice - transactionsPaid;
+  const transactionsPaid = roundToCents(calculateAmountPaid(bookingTxns));
+  const liveOutstanding = roundToCents(liveTotalPrice - transactionsPaid);
 
   const startEdit = () => {
     if (!detailBooking) return;
