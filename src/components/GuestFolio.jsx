@@ -14,6 +14,20 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: 'e_transfer', label: 'E-Transfer' }
 ];
 
+// Reservation channel enum (bookings.reservation_type) values + labels.
+const RESERVATION_TYPE_OPTIONS = [
+  { value: 'online', label: 'Online' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'walk_in', label: 'Walk In' }
+];
+const formatReservationType = (v) =>
+  RESERVATION_TYPE_OPTIONS.find(o => o.value === v)?.label || 'N/A';
+
+// Inactive/historical booking states: guest + stay fields are locked; only Booking
+// Notes (and transaction terminal-receipt fields) may be corrected.
+const INACTIVE_STATUSES = ['checked_out', 'cancelled', 'no_show'];
+const isInactiveStatus = (s) => INACTIVE_STATUSES.includes(s);
+
 // Status filter tabs (Checked In default). "all" shows every booking.
 const STATUS_TABS = [
   { key: 'checked_in', label: 'Checked In' },
@@ -338,6 +352,7 @@ const GuestFolio = ({
       children: detailBooking.children ?? 0,
       pets: detailBooking.pets ?? 0,
       booking_status: detailBooking.booking_status || '',
+      reservation_type: detailBooking.reservation_type || '',
       booking_notes: detailBooking.booking_notes || ''
     });
     setIsEditing(true);
@@ -347,6 +362,20 @@ const GuestFolio = ({
     if (!detailBooking) return;
     setIsSaving(true);
     try {
+      // Inactive bookings (checked-out / cancelled / no-show) are locked to a
+      // notes-only edit: persist Booking Notes and nothing else.
+      if (isInactive) {
+        const { error } = await supabase
+          .from('bookings')
+          .update({ booking_notes: bookingDraft.booking_notes })
+          .eq('booking_id', detailBooking.booking_id);
+        if (error) throw error;
+        await refreshData?.();
+        setIsEditing(false);
+        setIsSaving(false);
+        return;
+      }
+
       const guestId = detailBooking.guest_id || resolveGuest(detailBooking).guest_id;
       if (guestId) {
         const { error: gErr } = await supabase
@@ -379,6 +408,7 @@ const GuestFolio = ({
           children: parseInt(bookingDraft.children, 10) || 0,
           pets: parseInt(bookingDraft.pets, 10) || 0,
           booking_status: bookingDraft.booking_status || null,
+          reservation_type: bookingDraft.reservation_type || null,
           // Direct overwrite: exact textarea string, no append/concatenation.
           booking_notes: bookingDraft.booking_notes,
           total_nights: newNights,
@@ -424,14 +454,16 @@ const GuestFolio = ({
     if (!txnDetail) return;
     setSavingTxn(true);
     try {
-      // Checked-out folios are locked: only the two terminal-receipt documentation
-      // fields (auth_code / reference_number) may be corrected. Active bookings retain
-      // full metadata editing. Amount / payment_method / transaction_type are always
-      // locked to protect the ledger.
-      const updatePayload = isCheckedOut
+      // Inactive folios are locked: only the terminal-receipt documentation fields
+      // (auth_code / reference_number) and transaction_notes may be corrected. Active
+      // bookings retain full metadata editing. Amount / payment_method / transaction_type
+      // are always locked to protect the ledger.
+      const updatePayload = isInactive
         ? {
             auth_code: txnDraft.auth_code.trim() || null,
-            reference_number: txnDraft.reference_number.trim() || null
+            reference_number: txnDraft.reference_number.trim() || null,
+            // Direct overwrite: exact textarea string, no append/concatenation.
+            transaction_notes: txnDraft.transaction_notes
           }
         : {
             staff_member: txnDraft.staff_member || null,
@@ -651,12 +683,14 @@ const GuestFolio = ({
   const origRoom = detailBooking ? resolveRoom(detailBooking) : {};
   const roomCode = origRoom.code || origRoom.room_types?.code || origRoom.room_number || 'N/A';
 
-  // Checked-out bookings are locked: the folio becomes a read-only historical record.
-  // Guest details, charges, and transactions can be viewed but not edited/added/voided.
-  const isCheckedOut = detailBooking?.booking_status === 'checked_out';
-  // Fully read-only transaction modal = checked-out booking opened via "View".
-  // The "Edit" entry point (txnViewOnly=false) keeps Auth Code / Reference Number editable.
-  const txnReadOnly = isCheckedOut && txnViewOnly;
+  // Inactive bookings (checked-out / cancelled / no-show) are historical records:
+  // guest + stay fields are locked and only Booking Notes may be edited; charges are
+  // view-only; transactions allow only Auth Code / Reference Number / Notes corrections.
+  // Active states (checked_in / confirmed) retain full editing.
+  const isInactive = isInactiveStatus(detailBooking?.booking_status);
+  // Fully read-only transaction modal = inactive booking opened via "View".
+  // The "Edit" entry point (txnViewOnly=false) keeps Auth Code / Reference Number / Notes editable.
+  const txnReadOnly = isInactive && txnViewOnly;
 
   // --- Unsaved-changes guard --------------------------------------------------
   const differs = (a, b) => String(a ?? '') !== String(b ?? '');
@@ -669,6 +703,7 @@ const GuestFolio = ({
     differs(bookingDraft.children, detailBooking?.children) ||
     differs(bookingDraft.pets, detailBooking?.pets) ||
     differs(bookingDraft.booking_status, detailBooking?.booking_status) ||
+    differs(bookingDraft.reservation_type, detailBooking?.reservation_type) ||
     differs(bookingDraft.booking_notes, detailBooking?.booking_notes)
   );
   const chargeBaseline = chargeOriginal || blankCharge;
@@ -770,7 +805,7 @@ const GuestFolio = ({
                 <td>
                   <div className="folio-row-actions">
                     <button className="tool-btn sm" onClick={() => setDetailId(b.booking_id)}>Details</button>
-                    {b?.booking_status !== 'checked_out' && (
+                    {!isInactiveStatus(b?.booking_status) && (
                       <button className="tool-btn sm primary" onClick={() => openPayment(b)}>New Transaction</button>
                     )}
                   </div>
@@ -795,14 +830,14 @@ const GuestFolio = ({
               </div>
               <div className="folio-header-actions">
                 <button onClick={() => guardedClose(detailsDirty, closeDetail)} className="close-drawer-btn">✕</button>
-                {!isCheckedOut && (
-                  !isEditing ? (
-                    <button className="tool-btn sm" onClick={startEdit}>Edit</button>
-                  ) : (
-                    <button className="tool-btn sm primary" onClick={saveEdits} disabled={isSaving}>
-                      {isSaving ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  )
+                {/* Edit is available in every state. Inactive bookings enter a restricted
+                    edit mode where only Booking Notes are writable (see saveEdits). */}
+                {!isEditing ? (
+                  <button className="tool-btn sm" onClick={startEdit}>Edit</button>
+                ) : (
+                  <button className="tool-btn sm primary" onClick={saveEdits} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
                 )}
               </div>
             </div>
@@ -816,7 +851,7 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.first_name : (origGuest?.first_name || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, first_name: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.first_name, origGuest?.first_name) : ''}
                   />
                 </div>
@@ -825,7 +860,7 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.last_name : (origGuest?.last_name || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, last_name: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.last_name, origGuest?.last_name) : ''}
                   />
                 </div>
@@ -834,7 +869,7 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.email : (origGuest?.email || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, email: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.email, origGuest?.email) : ''}
                   />
                 </div>
@@ -843,7 +878,7 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.phone : (origGuest?.phone || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, phone: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.phone, origGuest?.phone) : ''}
                   />
                 </div>
@@ -852,7 +887,7 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.address : (origGuest?.address || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, address: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.address, origGuest?.address) : ''}
                   />
                 </div>
@@ -861,7 +896,7 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.city : (origGuest?.city || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, city: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.city, origGuest?.city) : ''}
                   />
                 </div>
@@ -870,9 +905,26 @@ const GuestFolio = ({
                   <input
                     value={isEditing ? guestDraft.country : (origGuest?.country || '')}
                     onChange={(e) => setGuestDraft({ ...guestDraft, country: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(guestDraft.country, origGuest?.country) : ''}
                   />
+                </div>
+                <div className="detail-field">
+                  <label>Reservation Type</label>
+                  {isEditing ? (
+                    <select
+                      value={bookingDraft.reservation_type}
+                      onChange={(e) => setBookingDraft({ ...bookingDraft, reservation_type: e.target.value })}
+                      disabled={isInactive}
+                      className={editedClass(bookingDraft.reservation_type, detailBooking?.reservation_type)}
+                    >
+                      {RESERVATION_TYPE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input value={formatReservationType(detailBooking?.reservation_type)} disabled readOnly />
+                  )}
                 </div>
               </div>
 
@@ -900,7 +952,7 @@ const GuestFolio = ({
                     type="date"
                     value={isEditing ? bookingDraft.check_in : (detailBooking?.check_in || '')}
                     onChange={(e) => setBookingDraft({ ...bookingDraft, check_in: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(bookingDraft.check_in, detailBooking?.check_in) : ''}
                   />
                 </div>
@@ -910,7 +962,7 @@ const GuestFolio = ({
                     type="date"
                     value={isEditing ? bookingDraft.check_out : (detailBooking?.check_out || '')}
                     onChange={(e) => setBookingDraft({ ...bookingDraft, check_out: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(bookingDraft.check_out, detailBooking?.check_out) : ''}
                   />
                 </div>
@@ -929,7 +981,7 @@ const GuestFolio = ({
                   <select
                     value={isEditing ? bookingDraft.booking_status : (detailBooking?.booking_status || '')}
                     onChange={(e) => setBookingDraft({ ...bookingDraft, booking_status: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(bookingDraft.booking_status, detailBooking?.booking_status) : ''}
                   >
                     {BOOKING_STATUS_OPTIONS.map(s => (
@@ -949,7 +1001,7 @@ const GuestFolio = ({
                     min="0"
                     value={isEditing ? bookingDraft.adults : (detailBooking?.adults ?? 0)}
                     onChange={(e) => setBookingDraft({ ...bookingDraft, adults: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(bookingDraft.adults, detailBooking?.adults ?? 0) : ''}
                   />
                 </div>
@@ -960,7 +1012,7 @@ const GuestFolio = ({
                     min="0"
                     value={isEditing ? bookingDraft.children : (detailBooking?.children ?? 0)}
                     onChange={(e) => setBookingDraft({ ...bookingDraft, children: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(bookingDraft.children, detailBooking?.children ?? 0) : ''}
                   />
                 </div>
@@ -971,7 +1023,7 @@ const GuestFolio = ({
                     min="0"
                     value={isEditing ? bookingDraft.pets : (detailBooking?.pets ?? 0)}
                     onChange={(e) => setBookingDraft({ ...bookingDraft, pets: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || isInactive}
                     className={isEditing ? editedClass(bookingDraft.pets, detailBooking?.pets ?? 0) : ''}
                   />
                 </div>
@@ -995,7 +1047,7 @@ const GuestFolio = ({
               <div className="ledger-card">
                 <div className="ledger-card-head">
                   <div className="detail-section-title" style={{ margin: 0, border: 'none' }}>Ledger</div>
-                  {!isCheckedOut && (
+                  {!isInactive && (
                     <button className="tool-btn sm primary" onClick={openAddCharge}>+ Add Charge</button>
                   )}
                 </div>
@@ -1042,7 +1094,7 @@ const GuestFolio = ({
                                 className="tool-btn sm"
                                 onClick={() => openEditCharge(e)}
                               >
-                                {isCheckedOut ? 'View' : 'Edit'}
+                                {isInactive ? 'View' : 'Edit'}
                               </button>
                             </td>
                           </tr>
@@ -1111,7 +1163,7 @@ const GuestFolio = ({
                               <span style={{ color: '#94a3b8' }}>—</span>
                             ) : (
                               <div className="txn-row-actions">
-                                {isCheckedOut ? (
+                                {isInactive ? (
                                   <>
                                     <button type="button" className="tool-btn sm" onClick={() => openTxn(t, true)}>View</button>
                                     <button type="button" className="tool-btn sm" onClick={() => openTxn(t, false)}>Edit</button>
@@ -1179,7 +1231,7 @@ const GuestFolio = ({
                     value={txnDraft.staff_member}
                     onChange={(e) => setTxnDraft({ ...txnDraft, staff_member: e.target.value })}
                     className={editedClass(txnDraft.staff_member, txnDetail?.staff_member)}
-                    disabled={isCheckedOut}
+                    disabled={isInactive}
                   >
                     <option value="">Unspecified</option>
                     {staff.map(name => <option key={name} value={name}>{name}</option>)}
@@ -1215,7 +1267,7 @@ const GuestFolio = ({
                       value={txnDraft.cardholder_name}
                       onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
                       className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
-                      disabled={isCheckedOut}
+                      disabled={isInactive}
                     />
                   </div>
                   <div className="detail-field">
@@ -1225,7 +1277,7 @@ const GuestFolio = ({
                       value={txnDraft.last4}
                       onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                       className={editedClass(txnDraft.last4, txnDetail?.last4)}
-                      disabled={isCheckedOut}
+                      disabled={isInactive}
                     />
                   </div>
                 </div>
@@ -1240,7 +1292,7 @@ const GuestFolio = ({
                       value={txnDraft.e_transfer_reference}
                       onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
                       className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
-                      disabled={isCheckedOut}
+                      disabled={isInactive}
                     />
                   </div>
                 </div>
@@ -1256,7 +1308,7 @@ const GuestFolio = ({
                   onChange={(e) => setTxnDraft({ ...txnDraft, transaction_notes: e.target.value })}
                   className={`notes-edit ${editedClass(txnDraft.transaction_notes, txnDetail?.transaction_notes)}`}
                   style={{ width: '100%', resize: 'vertical' }}
-                  disabled={isCheckedOut}
+                  disabled={txnReadOnly}
                 />
                 <p className="field-hint-text">{(txnDraft.transaction_notes || '').length}/500 characters</p>
               </div>
@@ -1271,7 +1323,7 @@ const GuestFolio = ({
                   <button className="tool-btn primary btn-block-center" onClick={saveTxn} disabled={savingTxn}>
                     {savingTxn ? 'Saving...' : 'Save Changes'}
                   </button>
-                  {!isCheckedOut && !isVoidedTxn(txnDetail) && (
+                  {!isInactive && !isVoidedTxn(txnDetail) && (
                     <button
                       className="tool-btn btn-block-center btn-danger"
                       onClick={() => setVoidTarget(txnDetail)}
@@ -1280,7 +1332,7 @@ const GuestFolio = ({
                       Void Transaction
                     </button>
                   )}
-                  {!isCheckedOut && (
+                  {!isInactive && (
                     <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
                       Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
                     </p>
@@ -1401,7 +1453,7 @@ const GuestFolio = ({
         <div className="modal-overlay">
           <div className="modal-content add-charge-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{isCheckedOut ? 'View Charge' : (editingChargeId ? 'Edit Charge' : 'Add Charge')}</h3>
+              <h3>{isInactive ? 'View Charge' : (editingChargeId ? 'Edit Charge' : 'Add Charge')}</h3>
               <button onClick={() => !savingCharge && guardedClose(chargeDirty, () => setAddChargeOpen(false))} className="close-drawer-btn">✕</button>
             </div>
 
@@ -1413,7 +1465,7 @@ const GuestFolio = ({
                 <select
                   value={chargeForm.entry_type}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_type: e.target.value })}
-                  disabled={savingCharge || isCheckedOut}
+                  disabled={savingCharge || isInactive}
                   className={chargeOriginal ? editedClass(chargeForm.entry_type, chargeOriginal.entry_type) : ''}
                 >
                   {CHARGE_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1427,7 +1479,7 @@ const GuestFolio = ({
                   min="0.01"
                   value={chargeForm.amount}
                   onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
-                  disabled={savingCharge || isCheckedOut}
+                  disabled={savingCharge || isInactive}
                   className={chargeOriginal ? editedClass(chargeForm.amount, chargeOriginal.amount) : ''}
                 />
               </div>
@@ -1439,7 +1491,7 @@ const GuestFolio = ({
                   type="date"
                   value={chargeForm.entry_date}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_date: e.target.value })}
-                  disabled={savingCharge || isCheckedOut}
+                  disabled={savingCharge || isInactive}
                   className={chargeOriginal ? editedClass(chargeForm.entry_date, chargeOriginal.entry_date) : ''}
                 />
               </div>
@@ -1448,7 +1500,7 @@ const GuestFolio = ({
                 <select
                   value={chargeForm.staff_member}
                   onChange={(e) => setChargeForm({ ...chargeForm, staff_member: e.target.value })}
-                  disabled={savingCharge || isCheckedOut}
+                  disabled={savingCharge || isInactive}
                   className={chargeOriginal ? editedClass(chargeForm.staff_member, chargeOriginal.staff_member) : ''}
                 >
                   <option value="">Unspecified</option>
@@ -1464,7 +1516,7 @@ const GuestFolio = ({
                   placeholder="e.g. Pet Fee, Late Checkout, GST 5%"
                   value={chargeForm.description}
                   onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
-                  disabled={savingCharge || isCheckedOut}
+                  disabled={savingCharge || isInactive}
                   className={chargeOriginal ? editedClass(chargeForm.description, chargeOriginal.description) : ''}
                 />
               </div>
@@ -1478,7 +1530,7 @@ const GuestFolio = ({
                   placeholder="Add any notes for this charge..."
                   value={chargeForm.notes}
                   onChange={(e) => setChargeForm({ ...chargeForm, notes: e.target.value })}
-                  disabled={savingCharge || isCheckedOut}
+                  disabled={savingCharge || isInactive}
                   className={`notes-edit ${chargeOriginal ? editedClass(chargeForm.notes, chargeOriginal.notes) : ''}`}
                   style={{ width: '100%', resize: 'vertical' }}
                 />
@@ -1486,7 +1538,7 @@ const GuestFolio = ({
               </div>
             </div>
 
-            {!isCheckedOut && (
+            {!isInactive && (
               <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
                 {savingCharge ? 'Saving...' : (editingChargeId ? 'Save Changes' : 'Save Charge')}
               </button>
