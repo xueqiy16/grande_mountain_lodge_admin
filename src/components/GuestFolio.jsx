@@ -17,7 +17,6 @@ const PAYMENT_METHOD_OPTIONS = [
 // Status filter tabs (Checked In default). "all" shows every booking.
 const STATUS_TABS = [
   { key: 'checked_in', label: 'Checked In' },
-  { key: 'confirmed', label: 'Confirmed' },
   { key: 'checked_out', label: 'Checked Out' },
   { key: 'cancelled', label: 'Cancelled' },
   { key: 'no_show', label: 'No Show' },
@@ -637,6 +636,10 @@ const GuestFolio = ({
   const origRoom = detailBooking ? resolveRoom(detailBooking) : {};
   const roomCode = origRoom.code || origRoom.room_types?.code || origRoom.room_number || 'N/A';
 
+  // Checked-out bookings are locked: the folio becomes a read-only historical record.
+  // Guest details, charges, and transactions can be viewed but not edited/added/voided.
+  const isCheckedOut = detailBooking?.booking_status === 'checked_out';
+
   // --- Unsaved-changes guard --------------------------------------------------
   const differs = (a, b) => String(a ?? '') !== String(b ?? '');
   const detailsDirty = isEditing && (
@@ -772,12 +775,14 @@ const GuestFolio = ({
               </div>
               <div className="folio-header-actions">
                 <button onClick={() => guardedClose(detailsDirty, closeDetail)} className="close-drawer-btn">✕</button>
-                {!isEditing ? (
-                  <button className="tool-btn sm" onClick={startEdit}>Edit</button>
-                ) : (
-                  <button className="tool-btn sm primary" onClick={saveEdits} disabled={isSaving}>
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </button>
+                {!isCheckedOut && (
+                  !isEditing ? (
+                    <button className="tool-btn sm" onClick={startEdit}>Edit</button>
+                  ) : (
+                    <button className="tool-btn sm primary" onClick={saveEdits} disabled={isSaving}>
+                      {isSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  )
                 )}
               </div>
             </div>
@@ -970,7 +975,9 @@ const GuestFolio = ({
               <div className="ledger-card">
                 <div className="ledger-card-head">
                   <div className="detail-section-title" style={{ margin: 0, border: 'none' }}>Ledger</div>
-                  <button className="tool-btn sm primary" onClick={openAddCharge}>+ Add Charge</button>
+                  {!isCheckedOut && (
+                    <button className="tool-btn sm primary" onClick={openAddCharge}>+ Add Charge</button>
+                  )}
                 </div>
                 <div className="txn-ledger-scroll">
                   <table className="pms-table txn-ledger-table ledger-compact">
@@ -1015,7 +1022,7 @@ const GuestFolio = ({
                                 className="tool-btn sm"
                                 onClick={() => openEditCharge(e)}
                               >
-                                Edit
+                                {isCheckedOut ? 'View' : 'Edit'}
                               </button>
                             </td>
                           </tr>
@@ -1084,7 +1091,7 @@ const GuestFolio = ({
                               <span style={{ color: '#94a3b8' }}>—</span>
                             ) : (
                               <div className="txn-row-actions">
-                                <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
+                                <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>{isCheckedOut ? 'View' : 'Edit'}</button>
                                 {t?.transaction_type === 'pre_auth' && (
                                   <button type="button" className="tool-btn sm txn-complete-btn" onClick={() => openComplete(t)}>Complete</button>
                                 )}
@@ -1107,7 +1114,7 @@ const GuestFolio = ({
         <div className="modal-overlay">
           <div className="modal-content edit-txn-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Edit Transaction</h3>
+              <h3>{isCheckedOut ? 'View Transaction' : 'Edit Transaction'}</h3>
               <button onClick={() => guardedClose(txnDirty, () => setTxnDetail(null))} className="close-drawer-btn">✕</button>
             </div>
 
@@ -1145,6 +1152,7 @@ const GuestFolio = ({
                     value={txnDraft.staff_member}
                     onChange={(e) => setTxnDraft({ ...txnDraft, staff_member: e.target.value })}
                     className={editedClass(txnDraft.staff_member, txnDetail?.staff_member)}
+                    disabled={isCheckedOut}
                   >
                     <option value="">Unspecified</option>
                     {staff.map(name => <option key={name} value={name}>{name}</option>)}
@@ -1156,6 +1164,7 @@ const GuestFolio = ({
                     value={txnDraft.auth_code}
                     onChange={(e) => setTxnDraft({ ...txnDraft, auth_code: e.target.value })}
                     className={editedClass(txnDraft.auth_code, txnDetail?.auth_code)}
+                    disabled={isCheckedOut}
                   />
                 </div>
                 <div className="detail-field">
@@ -1165,6 +1174,7 @@ const GuestFolio = ({
                     value={txnDraft.reference_number}
                     onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
                     className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
+                    disabled={isCheckedOut}
                   />
                 </div>
               </div>
@@ -1178,6 +1188,7 @@ const GuestFolio = ({
                       value={txnDraft.cardholder_name}
                       onChange={(e) => setTxnDraft({ ...txnDraft, cardholder_name: e.target.value })}
                       className={editedClass(txnDraft.cardholder_name, txnDetail?.cardholder_name)}
+                      disabled={isCheckedOut}
                     />
                   </div>
                   <div className="detail-field">
@@ -1187,6 +1198,7 @@ const GuestFolio = ({
                       value={txnDraft.last4}
                       onChange={(e) => setTxnDraft({ ...txnDraft, last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                       className={editedClass(txnDraft.last4, txnDetail?.last4)}
+                      disabled={isCheckedOut}
                     />
                   </div>
                 </div>
@@ -1201,6 +1213,7 @@ const GuestFolio = ({
                       value={txnDraft.e_transfer_reference}
                       onChange={(e) => setTxnDraft({ ...txnDraft, e_transfer_reference: e.target.value })}
                       className={editedClass(txnDraft.e_transfer_reference, txnDetail?.e_transfer_reference)}
+                      disabled={isCheckedOut}
                     />
                   </div>
                 </div>
@@ -1216,28 +1229,32 @@ const GuestFolio = ({
                   onChange={(e) => setTxnDraft({ ...txnDraft, transaction_notes: e.target.value })}
                   className={`notes-edit ${editedClass(txnDraft.transaction_notes, txnDetail?.transaction_notes)}`}
                   style={{ width: '100%', resize: 'vertical' }}
+                  disabled={isCheckedOut}
                 />
                 <p className="field-hint-text">{(txnDraft.transaction_notes || '').length}/500 characters</p>
               </div>
 
-              {/* Row 6: Actions (full width, stacked) + microcopy */}
-              <div className="edit-txn-actions">
-                <button className="tool-btn primary btn-block-center" onClick={saveTxn} disabled={savingTxn}>
-                  {savingTxn ? 'Saving...' : 'Save Changes'}
-                </button>
-                {!isVoidedTxn(txnDetail) && (
-                  <button
-                    className="tool-btn btn-block-center btn-danger"
-                    onClick={() => setVoidTarget(txnDetail)}
-                    disabled={savingTxn}
-                  >
-                    Void Transaction
+              {/* Row 6: Actions (full width, stacked) + microcopy.
+                  Fully hidden for checked-out bookings — the folio is read-only. */}
+              {!isCheckedOut && (
+                <div className="edit-txn-actions">
+                  <button className="tool-btn primary btn-block-center" onClick={saveTxn} disabled={savingTxn}>
+                    {savingTxn ? 'Saving...' : 'Save Changes'}
                   </button>
-                )}
-                <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
-                  Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
-                </p>
-              </div>
+                  {!isVoidedTxn(txnDetail) && (
+                    <button
+                      className="tool-btn btn-block-center btn-danger"
+                      onClick={() => setVoidTarget(txnDetail)}
+                      disabled={savingTxn}
+                    >
+                      Void Transaction
+                    </button>
+                  )}
+                  <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
+                    Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1352,7 +1369,7 @@ const GuestFolio = ({
         <div className="modal-overlay">
           <div className="modal-content add-charge-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{editingChargeId ? 'Edit Charge' : 'Add Charge'}</h3>
+              <h3>{isCheckedOut ? 'View Charge' : (editingChargeId ? 'Edit Charge' : 'Add Charge')}</h3>
               <button onClick={() => !savingCharge && guardedClose(chargeDirty, () => setAddChargeOpen(false))} className="close-drawer-btn">✕</button>
             </div>
 
@@ -1364,7 +1381,7 @@ const GuestFolio = ({
                 <select
                   value={chargeForm.entry_type}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_type: e.target.value })}
-                  disabled={savingCharge}
+                  disabled={savingCharge || isCheckedOut}
                   className={chargeOriginal ? editedClass(chargeForm.entry_type, chargeOriginal.entry_type) : ''}
                 >
                   {CHARGE_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1378,7 +1395,7 @@ const GuestFolio = ({
                   min="0.01"
                   value={chargeForm.amount}
                   onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })}
-                  disabled={savingCharge}
+                  disabled={savingCharge || isCheckedOut}
                   className={chargeOriginal ? editedClass(chargeForm.amount, chargeOriginal.amount) : ''}
                 />
               </div>
@@ -1390,7 +1407,7 @@ const GuestFolio = ({
                   type="date"
                   value={chargeForm.entry_date}
                   onChange={(e) => setChargeForm({ ...chargeForm, entry_date: e.target.value })}
-                  disabled={savingCharge}
+                  disabled={savingCharge || isCheckedOut}
                   className={chargeOriginal ? editedClass(chargeForm.entry_date, chargeOriginal.entry_date) : ''}
                 />
               </div>
@@ -1399,7 +1416,7 @@ const GuestFolio = ({
                 <select
                   value={chargeForm.staff_member}
                   onChange={(e) => setChargeForm({ ...chargeForm, staff_member: e.target.value })}
-                  disabled={savingCharge}
+                  disabled={savingCharge || isCheckedOut}
                   className={chargeOriginal ? editedClass(chargeForm.staff_member, chargeOriginal.staff_member) : ''}
                 >
                   <option value="">Unspecified</option>
@@ -1415,7 +1432,7 @@ const GuestFolio = ({
                   placeholder="e.g. Pet Fee, Late Checkout, GST 5%"
                   value={chargeForm.description}
                   onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
-                  disabled={savingCharge}
+                  disabled={savingCharge || isCheckedOut}
                   className={chargeOriginal ? editedClass(chargeForm.description, chargeOriginal.description) : ''}
                 />
               </div>
@@ -1429,7 +1446,7 @@ const GuestFolio = ({
                   placeholder="Add any notes for this charge..."
                   value={chargeForm.notes}
                   onChange={(e) => setChargeForm({ ...chargeForm, notes: e.target.value })}
-                  disabled={savingCharge}
+                  disabled={savingCharge || isCheckedOut}
                   className={`notes-edit ${chargeOriginal ? editedClass(chargeForm.notes, chargeOriginal.notes) : ''}`}
                   style={{ width: '100%', resize: 'vertical' }}
                 />
@@ -1437,9 +1454,11 @@ const GuestFolio = ({
               </div>
             </div>
 
-            <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
-              {savingCharge ? 'Saving...' : (editingChargeId ? 'Save Changes' : 'Save Charge')}
-            </button>
+            {!isCheckedOut && (
+              <button className="tool-btn primary" style={{ width: '100%', marginTop: '16px' }} onClick={saveCharge} disabled={savingCharge}>
+                {savingCharge ? 'Saving...' : (editingChargeId ? 'Save Changes' : 'Save Charge')}
+              </button>
+            )}
             </div>
           </div>
         </div>

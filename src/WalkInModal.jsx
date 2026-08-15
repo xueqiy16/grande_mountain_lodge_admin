@@ -20,7 +20,7 @@ const getInitialFormData = () => ({
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
   check_in: getLocalTodayString(), // Walk-in arrives TODAY (local date)
   check_out: '', adults: 1, children: 0, pets: 0,
-  card_brand: '', card_holder_name: '', last4: '',
+  card_brand: '', card_holder_name: '', last4: '', auth_code: '', reference_number: '',
   etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
   notes: ''
 });
@@ -72,6 +72,9 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     formData.card_brand !== 'cash' &&
     formData.card_brand !== 'interac_debit' &&
     !isEtransfer;
+  // Auth Code + Reference Number are optional manual fields transcribed from the
+  // physical Moneris terminal receipt (Visa / Mastercard / Amex / Interac Debit).
+  const showTerminalFields = requiresCardDetails || formData.card_brand === 'interac_debit';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -243,6 +246,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
           payment_method: formData.card_brand,
           cardholder_name: cardHolderName,
           last4: requiresCardDetails ? formData.last4 : null,
+          auth_code: showTerminalFields ? (formData.auth_code.trim() || null) : null,
+          reference_number: showTerminalFields ? (formData.reference_number.trim() || null) : null,
           e_transfer_reference: eTransferReference,
           transaction_notes: null,
           staff_member: formData.staff_member,
@@ -402,6 +407,8 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                 onChange={(e) => {
                   const value = e.target.value;
                   const clearsCard = value !== 'visa' && value !== 'mastercard' && value !== 'amex';
+                  // Auth Code / Reference Number apply to card + Interac Debit only.
+                  const clearsTerminal = clearsCard && value !== 'interac_debit';
                   const clearsEtransfer = value !== 'e_transfer';
                   setEtransferError(false);
                   setFormData({
@@ -410,6 +417,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                     ...(clearsCard
                       ? { card_holder_name: '', last4: '' }
                       : {}),
+                    ...(clearsTerminal ? { auth_code: '', reference_number: '' } : {}),
                     ...(clearsEtransfer ? { etransfer_reference: '' } : {})
                   });
                 }}
@@ -504,6 +512,29 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
                     value={formData.last4}
                     onChange={(e) => setFormData({...formData, last4: e.target.value})}
                     required
+                  />
+                </div>
+              </>
+            )}
+
+            {showTerminalFields && (
+              <>
+                <div className="form-group">
+                  <label>Auth Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 123456"
+                    value={formData.auth_code}
+                    onChange={(e) => setFormData({...formData, auth_code: e.target.value})}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Reference Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 987654321"
+                    value={formData.reference_number}
+                    onChange={(e) => setFormData({...formData, reference_number: e.target.value})}
                   />
                 </div>
               </>
