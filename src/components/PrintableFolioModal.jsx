@@ -102,7 +102,7 @@ const PrintableFolioModal = ({ booking, supabase, onClose }) => {
 
   return (
     <div className="print-folio-overlay" onClick={onClose}>
-      <div className="print-folio" onClick={(e) => e.stopPropagation()}>
+      <div id="printable-receipt" className="print-folio" onClick={(e) => e.stopPropagation()}>
         {/* UI controls (hidden when printing) */}
         <div className="print-folio-toolbar print-no-print">
           <button type="button" className="tool-btn primary" onClick={() => window.print()}>Print Receipt</button>

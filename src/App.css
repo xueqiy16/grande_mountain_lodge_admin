@@ -1935,7 +1935,7 @@ textarea.input-required {
 @media print {
   @page {
     size: letter portrait;
-    margin: 10mm 12mm;
+    margin: 8mm 12mm; /* tight margins to guarantee single-page fit */
   }
 
   html,
@@ -1943,6 +1943,7 @@ textarea.input-required {
     background: #fff !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 100% !important;
   }
 
   /* Hide everything, then reveal only the receipt subtree. */
@@ -1950,8 +1951,8 @@ textarea.input-required {
     visibility: hidden !important;
   }
 
-  .print-folio,
-  .print-folio * {
+  #printable-receipt,
+  #printable-receipt * {
     visibility: visible !important;
   }
 
@@ -1966,11 +1967,10 @@ textarea.input-required {
     display: none !important;
   }
 
+  /* Neutralize the overlay so it can't constrain (shrink-to-fit) the receipt. */
   .print-folio-overlay {
-    position: absolute !important;
+    position: static !important;
     inset: auto !important;
-    left: 0 !important;
-    top: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
@@ -1979,16 +1979,19 @@ textarea.input-required {
     box-shadow: none !important;
   }
 
-  /* Force the receipt to full page width, no card chrome. */
-  .print-folio {
+  /* Force the receipt to full page width. Pinning BOTH left and right (not just
+     left) prevents the absolute box from collapsing to shrink-to-fit width. */
+  #printable-receipt {
     position: absolute !important;
     left: 0 !important;
+    right: 0 !important;
     top: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     max-height: none !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     padding: 0 !important;
+    border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     overflow: visible !important;
