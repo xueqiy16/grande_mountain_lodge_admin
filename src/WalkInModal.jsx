@@ -27,7 +27,9 @@ const getInitialFormData = () => ({
   notes: ''
 });
 
-const WalkInModal = ({ isOpen, onClose, onBookingComplete }) => {
+const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
+  // Prefer the live active-staff roster; fall back to the hard-coded list.
+  const staff = staffList && staffList.length ? staffList : STAFF_MEMBERS;
   const [roomTypes, setRoomTypes] = useState([]);
   const [allRooms, setAllRooms] = useState([]);
   const [selectedType, setSelectedType] = useState('');
@@ -570,7 +572,7 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete }) => {
                 onChange={(e) => setFormData({...formData, staff_member: e.target.value})}
               >
                 <option value="">Select staff member...</option>
-                {STAFF_MEMBERS.map(name => (
+                {staff.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>

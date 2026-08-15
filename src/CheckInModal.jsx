@@ -14,7 +14,9 @@ const getBlankFormData = () => ({
   notes: ''
 });
 
-const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
+const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }) => {
+  // Prefer the live active-staff roster; fall back to the hard-coded list.
+  const staff = staffList && staffList.length ? staffList : STAFF_MEMBERS;
   const [roomTypes, setRoomTypes] = useState([]);
   const [allRooms, setAllRooms] = useState([]);
   const [selectedType, setSelectedType] = useState('');
@@ -561,7 +563,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
                 disabled={isProcessing}
               >
                 <option value="">Select staff member...</option>
-                {STAFF_MEMBERS.map(name => (
+                {staff.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>

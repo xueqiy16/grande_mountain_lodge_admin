@@ -9,8 +9,11 @@ const PaymentModal = ({
   booking,
   onPaymentComplete,
   defaultTransactionType = 'completion',
-  existingTransactions = []
+  existingTransactions = [],
+  staffList
 }) => {
+  // Prefer the live active-staff roster; fall back to the hard-coded list.
+  const staff = staffList && staffList.length ? staffList : STAFF_MEMBERS;
   // Stay total = nights * nightly rate (mirrors App.jsx logic).
   const calculateTotalBalance = (b) => {
     if (!b || !b.check_in || !b.check_out || !b.rooms?.room_types?.nightly_rate) return 0;
@@ -245,7 +248,7 @@ const PaymentModal = ({
                 disabled={isProcessing}
               >
                 <option value="">Select staff member...</option>
-                {STAFF_MEMBERS.map(name => (
+                {staff.map(name => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>

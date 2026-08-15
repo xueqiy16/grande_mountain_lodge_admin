@@ -6,6 +6,7 @@ import WalkInModal from './WalkInModal';
 import CheckInModal from './CheckInModal';
 import GuestFolio from './components/GuestFolio';
 import CalendarView from './components/CalendarView';
+import ManagerView from './components/ManagerView';
 import { STAFF_MEMBERS } from './lib/constants';
 import { calculateAmountPaid, roundToCents } from './lib/payments';
 import { computeTotalStayCost } from './lib/costing';
@@ -28,6 +29,18 @@ function App() {
   };
   const displayName = profileNameByEmail[session?.user?.email] || 'Lodge User';
   const avatarInitial = displayName.charAt(0).toUpperCase();
+  // Only the lodge manager account may access the Manager tab.
+  const isManager = session?.user?.email === 'zypeny@gmail.com';
+  const [staffRecords, setStaffRecords] = useState([]);
+  const [websiteDiscount, setWebsiteDiscount] = useState(0);
+  // Active staff full names power every "Staff Member" dropdown across LodgeOS.
+  // Falls back to the hard-coded roster if the staff table isn't populated yet.
+  const activeStaffNames = staffRecords.length
+    ? staffRecords
+        .filter(s => s.is_active)
+        .map(s => `${s.first_name || ''} ${s.last_name || ''}`.trim())
+        .filter(Boolean)
+    : STAFF_MEMBERS;
   const [searchTerm, setSearchTerm] = useState('');
   const [isWalkInOpen, setIsWalkInOpen] = useState(false);
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
@@ -42,7 +55,7 @@ function App() {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session) {
-        await fetchDashboardData();
+        await Promise.all([fetchDashboardData(), fetchStaff(), fetchSettings()]);
       }
       setLoading(false);
     }).catch(() => {
@@ -53,6 +66,8 @@ function App() {
       setSession(session);
       if (session) {
         fetchDashboardData();
+        fetchStaff();
+        fetchSettings();
       }
     });
 
@@ -105,6 +120,46 @@ function App() {
     } finally {
       setDataLoading(false);
     }
+  };
+
+  // Pull the dynamic staff roster. If the table doesn't exist yet the app keeps
+  // working off the hard-coded STAFF_MEMBERS fallback (activeStaffNames).
+  const fetchStaff = async () => {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('*')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('STAFF FETCH ERROR:', error);
+      return;
+    }
+    if (data) setStaffRecords(data);
+  };
+
+  const fetchSettings = async () => {
+    const { data, error } = await supabase
+      .from('hotel_settings')
+      .select('website_discount')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) {
+      console.error('SETTINGS FETCH ERROR:', error);
+      return;
+    }
+    if (data) setWebsiteDiscount(Number(data.website_discount ?? 0));
+  };
+
+  const saveWebsiteDiscount = async (value) => {
+    const { error } = await supabase
+      .from('hotel_settings')
+      .upsert({ id: 1, website_discount: value, updated_at: new Date().toISOString() });
+    if (error) {
+      alert('Failed to save discount: ' + error.message);
+      return false;
+    }
+    setWebsiteDiscount(Number(value));
+    setMessage('Website discount updated.');
+    return true;
   };
 
   const activeBooking = selectedRoom 
@@ -302,7 +357,7 @@ function App() {
                   </div>
                 </header>
 
-                <Sidebar currentTab={currentTab} setTab={setCurrentTab} />
+                <Sidebar currentTab={currentTab} setTab={setCurrentTab} isManager={isManager} />
 
                 <main className="main-content">
                   {currentTab === 'Calendar' ? (
@@ -311,6 +366,26 @@ function App() {
                       getOutstandingBalance={calculateOutstandingBalance}
                       onOpenFolio={(id) => { setSelectedFolioId(id); setCurrentTab('Guest Folio'); }}
                     />
+                  ) : currentTab === 'Manager' ? (
+                    isManager ? (
+                      <ManagerView
+                        supabase={supabase}
+                        staffRecords={staffRecords}
+                        refreshStaff={fetchStaff}
+                        websiteDiscount={websiteDiscount}
+                        onSaveDiscount={saveWebsiteDiscount}
+                      />
+                    ) : (
+                      <div className="folio-view">
+                        <div className="empty-view" style={{ textAlign: 'center' }}>
+                          <h2 style={{ marginBottom: '8px' }}>Access Restricted</h2>
+                          <p style={{ color: '#64748b' }}>The Manager area is available to lodge managers only.</p>
+                          <button className="tool-btn primary" style={{ marginTop: '16px' }} onClick={() => setCurrentTab('Calendar')}>
+                            Back to Calendar
+                          </button>
+                        </div>
+                      </div>
+                    )
                   ) : currentTab === 'Inventory' ? (
                     <div className="folio-view">
                       <div className="view-header">
@@ -505,7 +580,7 @@ function App() {
                       guests={bookings.map(b => b.guests).filter(Boolean)}
                       rooms={rooms}
                       transactions={allTransactions}
-                      staffList={STAFF_MEMBERS}
+                      staffList={activeStaffNames}
                       refreshData={fetchDashboardData}
                       supabase={supabase}
                       openBookingId={selectedFolioId}
@@ -578,19 +653,33 @@ function App() {
                           <div className="view-header"><h2>Expected Check-Ins</h2><div className="date-selector"><label>DATE</label><input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} /></div></div>
                           {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').length > 0 ? (
                             <table className="pms-table">
-                              <thead><tr><th>Guest Name</th><th>Room</th><th>Room Type</th><th className="col-tight">Stay Dates</th><th className="col-tight">Outstanding</th><th className="col-tight">Action</th></tr></thead>
+                              <thead><tr><th style={{ width: '26%', minWidth: '180px' }}>Guest Name</th><th style={{ width: '16%', minWidth: '110px' }}>Room</th><th style={{ width: '20%' }}>Stay Dates</th><th style={{ width: '16%' }}>Outstanding</th><th style={{ width: '22%', minWidth: '200px' }}>Action</th></tr></thead>
                               <tbody>
                                 {bookings.filter(b => normalizeDate(b.check_in) === arrivalDate && b.booking_status === 'confirmed').map(booking => {
                                   const rt = booking.rooms?.room_types;
-                                  const roomTypeLabel = rt ? `${rt.name} (${rt.code})` : (booking.rooms?.code || 'N/A');
+                                  const roomTypeLabel = rt?.code || rt?.name || booking.rooms?.code || 'N/A';
                                   return (
                                   <tr key={booking.booking_id}>
                                     <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
-                                    <td>{booking.rooms?.room_number}</td>
-                                    <td>{roomTypeLabel}</td>
-                                    <td className="col-tight">{booking.check_in} to {booking.check_out}</td>
-                                    <td className="col-tight" style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
-                                    <td className="col-tight"><button onClick={() => handleCheckIn(booking)} className="checkin-btn">Check-In</button></td>
+                                    <td>
+                                      <div className="guest-cell">
+                                        <strong>Room {booking.rooms?.room_number ?? 'N/A'}</strong>
+                                        <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{roomTypeLabel}</span>
+                                      </div>
+                                    </td>
+                                    <td style={{ whiteSpace: 'nowrap' }}>{booking.check_in} to {booking.check_out}</td>
+                                    <td style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
+                                    <td>
+                                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                                        <button onClick={() => handleCheckIn(booking)} className="checkin-btn">Check-In</button>
+                                        <button
+                                          onClick={() => { setSelectedFolioId(booking.booking_id); setCurrentTab('Guest Folio'); }}
+                                          className="tool-btn"
+                                        >
+                                          Guest Folio
+                                        </button>
+                                      </div>
+                                    </td>
                                   </tr>
                                   );
                                 })}
@@ -710,7 +799,7 @@ function App() {
                     </div>
                   )}
 
-                  <WalkInModal isOpen={isWalkInOpen} onClose={() => setIsWalkInOpen(false)} onBookingComplete={(msg) => { setMessage(msg); fetchDashboardData(); }} />
+                  <WalkInModal isOpen={isWalkInOpen} onClose={() => setIsWalkInOpen(false)} staffList={activeStaffNames} onBookingComplete={(msg) => { setMessage(msg); fetchDashboardData(); }} />
                   <CheckInModal 
                     isOpen={isCheckInModalOpen} 
                     onClose={() => {
@@ -718,6 +807,7 @@ function App() {
                       setSelectedCheckInBooking(null);
                     }} 
                     booking={selectedCheckInBooking}
+                    staffList={activeStaffNames}
                     onCheckInComplete={handleCheckInComplete}
                   />
                   {message && <div className="toast-notification">{message}</div>}

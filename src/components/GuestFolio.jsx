@@ -1586,6 +1586,7 @@ const GuestFolio = ({
         onPaymentComplete={async () => { await refreshData?.(); setPayBooking(null); setPayTxns([]); }}
         existingTransactions={payTxns}
         defaultTransactionType="completion"
+        staffList={staff}
       />
 
       {/* Unsaved-changes confirmation (shared across folio sub-modals) */}
