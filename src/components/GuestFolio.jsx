@@ -156,6 +156,9 @@ const GuestFolio = ({
   const [txnDetail, setTxnDetail] = useState(null);
   const [txnDraft, setTxnDraft] = useState({});
   const [savingTxn, setSavingTxn] = useState(false);
+  // Checked-out folios expose a "View" (fully read-only) and an "Edit" (Auth Code +
+  // Reference Number only) entry point for the same modal; this flag tracks which.
+  const [txnViewOnly, setTxnViewOnly] = useState(false);
   // Transaction pending void confirmation (null when no prompt is open).
   const [voidTarget, setVoidTarget] = useState(null);
 
@@ -400,7 +403,8 @@ const GuestFolio = ({
     setPayTxns(!error && data ? data : []);
   };
 
-  const openTxn = (t) => {
+  const openTxn = (t, viewOnly = false) => {
+    setTxnViewOnly(viewOnly);
     setTxnDetail(t);
     setTxnDraft({
       staff_member: t.staff_member || '',
@@ -417,20 +421,28 @@ const GuestFolio = ({
     if (!txnDetail) return;
     setSavingTxn(true);
     try {
-      // Amount / payment_method / transaction_type are locked to protect the ledger.
-      // Only metadata fields are writable here.
+      // Checked-out folios are locked: only the two terminal-receipt documentation
+      // fields (auth_code / reference_number) may be corrected. Active bookings retain
+      // full metadata editing. Amount / payment_method / transaction_type are always
+      // locked to protect the ledger.
+      const updatePayload = isCheckedOut
+        ? {
+            auth_code: txnDraft.auth_code.trim() || null,
+            reference_number: txnDraft.reference_number.trim() || null
+          }
+        : {
+            staff_member: txnDraft.staff_member || null,
+            // Direct overwrite: exact textarea string, no append/concatenation.
+            transaction_notes: txnDraft.transaction_notes,
+            auth_code: txnDraft.auth_code || null,
+            reference_number: txnDraft.reference_number || null,
+            cardholder_name: txnDraft.cardholder_name || null,
+            last4: txnDraft.last4 || null,
+            e_transfer_reference: txnDraft.e_transfer_reference || null
+          };
       const { error } = await supabase
         .from('transactions')
-        .update({
-          staff_member: txnDraft.staff_member || null,
-          // Direct overwrite: exact textarea string, no append/concatenation.
-          transaction_notes: txnDraft.transaction_notes,
-          auth_code: txnDraft.auth_code || null,
-          reference_number: txnDraft.reference_number || null,
-          cardholder_name: txnDraft.cardholder_name || null,
-          last4: txnDraft.last4 || null,
-          e_transfer_reference: txnDraft.e_transfer_reference || null
-        })
+        .update(updatePayload)
         .eq('transaction_id', txnDetail.transaction_id);
       if (error) throw error;
       await refreshData?.();
@@ -639,6 +651,9 @@ const GuestFolio = ({
   // Checked-out bookings are locked: the folio becomes a read-only historical record.
   // Guest details, charges, and transactions can be viewed but not edited/added/voided.
   const isCheckedOut = detailBooking?.booking_status === 'checked_out';
+  // Fully read-only transaction modal = checked-out booking opened via "View".
+  // The "Edit" entry point (txnViewOnly=false) keeps Auth Code / Reference Number editable.
+  const txnReadOnly = isCheckedOut && txnViewOnly;
 
   // --- Unsaved-changes guard --------------------------------------------------
   const differs = (a, b) => String(a ?? '') !== String(b ?? '');
@@ -752,7 +767,9 @@ const GuestFolio = ({
                 <td>
                   <div className="folio-row-actions">
                     <button className="tool-btn sm" onClick={() => setDetailId(b.booking_id)}>Details</button>
-                    <button className="tool-btn sm primary" onClick={() => openPayment(b)}>New Transaction</button>
+                    {b?.booking_status !== 'checked_out' && (
+                      <button className="tool-btn sm primary" onClick={() => openPayment(b)}>New Transaction</button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -1091,7 +1108,14 @@ const GuestFolio = ({
                               <span style={{ color: '#94a3b8' }}>—</span>
                             ) : (
                               <div className="txn-row-actions">
-                                <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>{isCheckedOut ? 'View' : 'Edit'}</button>
+                                {isCheckedOut ? (
+                                  <>
+                                    <button type="button" className="tool-btn sm" onClick={() => openTxn(t, true)}>View</button>
+                                    <button type="button" className="tool-btn sm" onClick={() => openTxn(t, false)}>Edit</button>
+                                  </>
+                                ) : (
+                                  <button type="button" className="tool-btn sm" onClick={() => openTxn(t)}>Edit</button>
+                                )}
                                 {t?.transaction_type === 'pre_auth' && (
                                   <button type="button" className="tool-btn sm txn-complete-btn" onClick={() => openComplete(t)}>Complete</button>
                                 )}
@@ -1114,7 +1138,7 @@ const GuestFolio = ({
         <div className="modal-overlay">
           <div className="modal-content edit-txn-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{isCheckedOut ? 'View Transaction' : 'Edit Transaction'}</h3>
+              <h3>{txnReadOnly ? 'View Transaction' : 'Edit Transaction'}</h3>
               <button onClick={() => guardedClose(txnDirty, () => setTxnDetail(null))} className="close-drawer-btn">✕</button>
             </div>
 
@@ -1164,7 +1188,7 @@ const GuestFolio = ({
                     value={txnDraft.auth_code}
                     onChange={(e) => setTxnDraft({ ...txnDraft, auth_code: e.target.value })}
                     className={editedClass(txnDraft.auth_code, txnDetail?.auth_code)}
-                    disabled={isCheckedOut}
+                    disabled={txnReadOnly}
                   />
                 </div>
                 <div className="detail-field">
@@ -1174,7 +1198,7 @@ const GuestFolio = ({
                     value={txnDraft.reference_number}
                     onChange={(e) => setTxnDraft({ ...txnDraft, reference_number: e.target.value })}
                     className={editedClass(txnDraft.reference_number, txnDetail?.reference_number)}
-                    disabled={isCheckedOut}
+                    disabled={txnReadOnly}
                   />
                 </div>
               </div>
@@ -1235,13 +1259,16 @@ const GuestFolio = ({
               </div>
 
               {/* Row 6: Actions (full width, stacked) + microcopy.
-                  Fully hidden for checked-out bookings — the folio is read-only. */}
-              {!isCheckedOut && (
+                  - View mode (checked-out via "View"): entire block hidden.
+                  - Edit mode on a checked-out booking: Save only (Auth Code / Reference
+                    Number); Void + warning stay hidden — past transactions can't be voided.
+                  - Active booking: full Save + Void + warning. */}
+              {!txnReadOnly && (
                 <div className="edit-txn-actions">
                   <button className="tool-btn primary btn-block-center" onClick={saveTxn} disabled={savingTxn}>
                     {savingTxn ? 'Saving...' : 'Save Changes'}
                   </button>
-                  {!isVoidedTxn(txnDetail) && (
+                  {!isCheckedOut && !isVoidedTxn(txnDetail) && (
                     <button
                       className="tool-btn btn-block-center btn-danger"
                       onClick={() => setVoidTarget(txnDetail)}
@@ -1250,9 +1277,11 @@ const GuestFolio = ({
                       Void Transaction
                     </button>
                   )}
-                  <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
-                    Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
-                  </p>
+                  {!isCheckedOut && (
+                    <p className="field-hint-text" style={{ textAlign: 'center', margin: 0 }}>
+                      Need to change the amount or payment method? Please void/delete this entry and log a new transaction.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
