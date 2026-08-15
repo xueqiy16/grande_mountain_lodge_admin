@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
-import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
+import { STAFF_MEMBERS, TRANSACTION_TYPES, resolveRoomPreset } from './lib/constants';
 import { computeStayCost } from './lib/costing';
 // Local calendar date as YYYY-MM-DD. Built from the local getFullYear/Month/Date
 // (NOT toISOString(), which is UTC and can jump a day across the midnight boundary).
@@ -19,6 +19,7 @@ const getLocalTodayString = () => {
 const getInitialFormData = () => ({
   reservation_type: 'walk_in', // walk_in | phone | online (matches bookings.reservation_type enum)
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
+  room_price: '', // editable nightly rate ($ CAD); defaults from the selected room type
   check_in: getLocalTodayString(), // Walk-in arrives TODAY (local date)
   check_out: '', adults: 1, children: 0, pets: 0,
   card_brand: '', card_holder_name: '', last4: '', auth_code: '', reference_number: '',
@@ -26,7 +27,7 @@ const getInitialFormData = () => ({
   notes: ''
 });
 
-const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => {
+const WalkInModal = ({ isOpen, onClose, onBookingComplete }) => {
   const [roomTypes, setRoomTypes] = useState([]);
   const [allRooms, setAllRooms] = useState([]);
   const [selectedType, setSelectedType] = useState('');
@@ -134,6 +135,14 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
       return;
     }
 
+    // Room Price is required and must be a positive number (staff can override the
+    // default, but never leave it blank or set it to 0/negative).
+    const roomPrice = Number(formData.room_price);
+    if (isNaN(roomPrice) || roomPrice <= 0) {
+      alert("Please enter a valid room price ($ CAD / night).");
+      return;
+    }
+
     // Payment is only collected for Walk-Ins. Phone/Online reservations log no
     // upfront transaction, so all payment validation is skipped for them.
     let amountPaid = 0;
@@ -194,12 +203,10 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
     // E-transfer reference has its own dedicated transactions.e_transfer_reference column.
     const eTransferReference = isEtransfer ? formData.etransfer_reference.trim() : null;
 
-    // Pricing: nights * nightly rate + taxes. total_price stores the tax-inclusive
-    // grand total (base + GST + tourism levy); folio edits later fold in fees/discounts.
-    const selectedRoomType = roomTypes.find(
-      t => String(t.room_type_id).trim() === sanitizedValue
-    );
-    const priced = computeStayCost(selectedRoomType?.nightly_rate, formData.check_in, formData.check_out);
+    // Pricing: nights * nightly rate + taxes. Uses the editable Room Price entered
+    // by staff. total_price stores the tax-inclusive grand total (base + GST +
+    // tourism levy); folio edits later fold in fees/discounts.
+    const priced = computeStayCost(roomPrice, formData.check_in, formData.check_out);
     const totalNights = Math.max(1, priced.numberOfNights);
     const totalPrice = Number(priced.totalStayAmount.toFixed(2));
 
@@ -221,6 +228,7 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
         adults: Number(formData.adults) || 0,
         children: Number(formData.children) || 0,
         pets: Number(formData.pets) || 0,
+        room_price: roomPrice,
         total_nights: totalNights,
         total_price: totalPrice,
         // amount_paid is owned by the tr_update_amount_paid trigger, which recomputes
@@ -284,10 +292,12 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
   };
 
   // Live cost summary: resolve the selected room type, then derive nights/taxes/total.
+  // All math uses the editable Room Price (formData.room_price), NOT the raw DB rate.
   const selectedRoomTypeLive = roomTypes.find(
     t => String(t.room_type_id).trim() === String(selectedType).trim()
   );
-  const cost = computeStayCost(selectedRoomTypeLive?.nightly_rate, formData.check_in, formData.check_out);
+  const selectedPreset = resolveRoomPreset(selectedRoomTypeLive);
+  const cost = computeStayCost(formData.room_price, formData.check_in, formData.check_out);
   const showCostInfo = !!selectedRoomTypeLive && cost.numberOfNights > 0;
 
   if (!isOpen) return null;
@@ -329,19 +339,61 @@ const WalkInModal = ({ isOpen, onClose, availableRooms, onBookingComplete }) => 
               <select
                 required
                 value={selectedType}
-                onChange={(e) => { setSelectedType(e.target.value); setRoomError(false); }}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedType(id);
+                  setRoomError(false);
+                  // Auto-fill the editable Room Price with this type's standard rate.
+                  const rt = roomTypes.find(t => String(t.room_type_id).trim() === String(id).trim());
+                  const preset = resolveRoomPreset(rt);
+                  setFormData(fd => ({
+                    ...fd,
+                    room_price: preset.price === '' ? '' : String(preset.price)
+                  }));
+                }}
                 className={roomError ? 'input-error' : ''}
                 aria-invalid={roomError}
                 aria-describedby={roomError ? 'room-category-error' : undefined}
               >
-                <option value="">Select Room Type...</option>
+                <option value="">Select Room Type</option>
                 {roomTypes.map(t => (
-                  <option key={t.room_type_id} value={t.room_type_id}>{t.name} (${t.nightly_rate})</option>
+                  <option key={t.room_type_id} value={t.room_type_id}>{t.name}</option>
                 ))}
               </select>
               {roomError && (
                 <p id="room-category-error" className="field-error-text">
                   No rooms available for this room category.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Room Code (read-only, derived from Room Type) + editable Room Price */}
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: '20px' }}>
+            <div className="form-group">
+              <label>Room Code *</label>
+              <input
+                type="text"
+                value={selectedPreset.code}
+                readOnly
+                disabled
+                placeholder="Select a room type"
+              />
+            </div>
+            <div className="form-group">
+              <label>Room Price ($ CAD / night) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.room_price}
+                required
+                onChange={(e) => setFormData({ ...formData, room_price: e.target.value })}
+              />
+              {selectedPreset.price !== '' && (
+                <p className="field-hint-text">
+                  Default price: ${Number(selectedPreset.price).toFixed(2)} CAD / night
                 </p>
               )}
             </div>

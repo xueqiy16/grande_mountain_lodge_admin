@@ -689,7 +689,7 @@ function App() {
                     </div>
                   )}
 
-                  <WalkInModal isOpen={isWalkInOpen} onClose={() => setIsWalkInOpen(false)} availableRooms={rooms.filter(r => r.status === 'available')} onBookingComplete={(msg) => { setMessage(msg); fetchDashboardData(); }} />
+                  <WalkInModal isOpen={isWalkInOpen} onClose={() => setIsWalkInOpen(false)} onBookingComplete={(msg) => { setMessage(msg); fetchDashboardData(); }} />
                   <CheckInModal 
                     isOpen={isCheckInModalOpen} 
                     onClose={() => {

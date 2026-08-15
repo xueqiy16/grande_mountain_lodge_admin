@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
-import { STAFF_MEMBERS, TRANSACTION_TYPES } from './lib/constants';
+import { STAFF_MEMBERS, TRANSACTION_TYPES, resolveRoomPreset } from './lib/constants';
 import { computeStayCost } from './lib/costing';
 // Blank slate used on close; the form is re-populated from the booking on open.
 const getBlankFormData = () => ({
+  reservation_type: 'walk_in', // walk_in | phone | online (bookings.reservation_type)
   first_name: '', last_name: '', email: '', phone: '', address: '', city: '', country: '',
+  room_price: '', // editable nightly rate ($ CAD); defaults from the selected room type
   check_in: '', check_out: '', adults: 1, children: 0, pets: 0,
   card_brand: '', cardholder_name: '', last4: '',
   etransfer_reference: '', amount_paid: '', staff_member: '', transaction_type: 'pre_auth',
@@ -60,6 +62,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
       const g = booking.guests || {};
       setSelectedType(String(booking.rooms?.room_type_id ?? ''));
       setFormData({
+        reservation_type: booking.reservation_type || 'walk_in',
         first_name: g.first_name || '',
         last_name: g.last_name || '',
         email: g.email || '',
@@ -67,6 +70,11 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         address: g.address || '',
         city: g.city || '',
         country: g.country || '',
+        // Prefer the booking's stored price; the default-fill effect supplies the
+        // room type's standard rate when the booking has no saved price yet.
+        room_price: booking.room_price != null && booking.room_price !== ''
+          ? String(booking.room_price)
+          : '',
         check_in: booking.check_in || '',
         check_out: booking.check_out || '',
         adults: booking.adults ?? 1,
@@ -96,15 +104,36 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
     }
   }, [isOpen]);
 
+  // Once room types load, seed the editable Room Price with the selected type's
+  // standard rate — but only when it's still blank, so a saved booking price or a
+  // staff override is never clobbered.
+  useEffect(() => {
+    if (!isOpen || !selectedType || roomTypes.length === 0) return;
+    setFormData(fd => {
+      if (fd.room_price !== '') return fd;
+      const rt = roomTypes.find(t => String(t.room_type_id).trim() === String(selectedType).trim());
+      const preset = resolveRoomPreset(rt);
+      return preset.price === '' ? fd : { ...fd, room_price: String(preset.price) };
+    });
+  }, [isOpen, selectedType, roomTypes]);
+
   const isRoomAvailable = (room) =>
     (room?.status ?? '').toString().toLowerCase().trim() === 'available';
 
   // Baseline mirrors the prefill effect, so a freshly opened form is never "dirty".
   const baselineGuest = booking?.guests || {};
+  const baselineRoomType = roomTypes.find(
+    t => String(t.room_type_id).trim() === String(booking?.rooms?.room_type_id ?? '').trim()
+  );
+  const baselineRoomPrice = booking?.room_price != null && booking.room_price !== ''
+    ? String(booking.room_price)
+    : (() => { const p = resolveRoomPreset(baselineRoomType).price; return p === '' ? '' : String(p); })();
   const checkInBaseline = {
+    reservation_type: booking?.reservation_type || 'walk_in',
     first_name: baselineGuest.first_name || '', last_name: baselineGuest.last_name || '',
     email: baselineGuest.email || '', phone: baselineGuest.phone || '',
     address: baselineGuest.address || '', city: baselineGuest.city || '', country: baselineGuest.country || '',
+    room_price: baselineRoomPrice,
     check_in: booking?.check_in || '', check_out: booking?.check_out || '',
     adults: booking?.adults ?? 1, children: booking?.children ?? 0, pets: booking?.pets ?? 0,
     card_brand: '', cardholder_name: `${baselineGuest.first_name || ''} ${baselineGuest.last_name || ''}`.trim(),
@@ -165,15 +194,20 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
       return;
     }
 
+    // Room Price is required and must be a positive number.
+    const roomPrice = Number(formData.room_price);
+    if (isNaN(roomPrice) || roomPrice <= 0) {
+      alert("Please enter a valid room price ($ CAD / night).");
+      return;
+    }
+
     if (isProcessing) return;
     setIsProcessing(true);
 
-    // Pricing: nights * nightly rate + taxes. total_price stores the tax-inclusive
-    // grand total (base + GST + tourism levy); folio edits later fold in fees/discounts.
-    const selectedRoomType = roomTypes.find(
-      t => String(t.room_type_id).trim() === sanitizedValue
-    );
-    const priced = computeStayCost(selectedRoomType?.nightly_rate, formData.check_in, formData.check_out);
+    // Pricing: nights * nightly rate + taxes. Uses the editable Room Price entered
+    // by staff. total_price stores the tax-inclusive grand total (base + GST +
+    // tourism levy); folio edits later fold in fees/discounts.
+    const priced = computeStayCost(roomPrice, formData.check_in, formData.check_out);
     const totalNights = Math.max(1, priced.numberOfNights);
     const totalPrice = Number(priced.totalStayAmount.toFixed(2));
 
@@ -209,11 +243,13 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
         .from('bookings')
         .update({
           room_id: targetRoomId,
+          reservation_type: formData.reservation_type,
           check_in: formData.check_in,
           check_out: formData.check_out,
           adults: Number(formData.adults) || 0,
           children: Number(formData.children) || 0,
           pets: Number(formData.pets) || 0,
+          room_price: roomPrice,
           total_nights: totalNights,
           total_price: totalPrice,
           // amount_paid is owned by tr_update_amount_paid (recomputed from the
@@ -276,10 +312,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
   };
 
   // Live cost summary: resolve the selected room type, then derive nights/taxes/total.
+  // All math uses the editable Room Price (formData.room_price), NOT the raw DB rate.
   const selectedRoomTypeLive = roomTypes.find(
     t => String(t.room_type_id).trim() === String(selectedType).trim()
   );
-  const cost = computeStayCost(selectedRoomTypeLive?.nightly_rate, formData.check_in, formData.check_out);
+  const selectedPreset = resolveRoomPreset(selectedRoomTypeLive);
+  const cost = computeStayCost(formData.room_price, formData.check_in, formData.check_out);
   const showCostInfo = !!selectedRoomTypeLive && cost.numberOfNights > 0;
 
   if (!isOpen) return null;
@@ -294,27 +332,87 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete }) => {
 
         <form onSubmit={handleSubmit} className="walkin-form">
           <div className="walkin-form-body">
-          <div className="form-section" style={{ marginBottom: '20px' }}>
-            <label>Room Type</label>
-            <select
-              required
-              value={selectedType}
-              onChange={(e) => { setSelectedType(e.target.value); setRoomError(false); }}
-              className={`prefilled ${roomDirtyClass} ${roomError ? 'input-error' : ''}`}
-              aria-invalid={roomError}
-              aria-describedby={roomError ? 'room-category-error' : undefined}
-              disabled={isProcessing}
-            >
-              <option value="">Select Room Type...</option>
-              {roomTypes.map(t => (
-                <option key={t.room_type_id} value={t.room_type_id}>{t.name} (${t.nightly_rate})</option>
-              ))}
-            </select>
-            {roomError && (
-              <p id="room-category-error" className="field-error-text">
-                No rooms available for this room category.
-              </p>
-            )}
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: '20px' }}>
+            <div className="form-group">
+              <label>Reservation Type *</label>
+              <select
+                required
+                value={formData.reservation_type}
+                onChange={(e) => setFormData({ ...formData, reservation_type: e.target.value })}
+                className={`prefilled ${dirtyClass('reservation_type')}`}
+                disabled={isProcessing}
+              >
+                <option value="online">Online</option>
+                <option value="phone">Phone</option>
+                <option value="walk_in">Walk In</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Room Type *</label>
+              <select
+                required
+                value={selectedType}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSelectedType(id);
+                  setRoomError(false);
+                  // Auto-fill the editable Room Price with this type's standard rate.
+                  const rt = roomTypes.find(t => String(t.room_type_id).trim() === String(id).trim());
+                  const preset = resolveRoomPreset(rt);
+                  setFormData(fd => ({
+                    ...fd,
+                    room_price: preset.price === '' ? '' : String(preset.price)
+                  }));
+                }}
+                className={`prefilled ${roomDirtyClass} ${roomError ? 'input-error' : ''}`}
+                aria-invalid={roomError}
+                aria-describedby={roomError ? 'room-category-error' : undefined}
+                disabled={isProcessing}
+              >
+                <option value="">Select Room Type</option>
+                {roomTypes.map(t => (
+                  <option key={t.room_type_id} value={t.room_type_id}>{t.name}</option>
+                ))}
+              </select>
+              {roomError && (
+                <p id="room-category-error" className="field-error-text">
+                  No rooms available for this room category.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Room Code (read-only, derived from Room Type) + editable Room Price */}
+          <div className="form-grid-3" style={{ gridTemplateColumns: '1fr 1fr', marginBottom: '20px' }}>
+            <div className="form-group">
+              <label>Room Code *</label>
+              <input
+                type="text"
+                value={selectedPreset.code}
+                readOnly
+                disabled
+                placeholder="Select a room type"
+              />
+            </div>
+            <div className="form-group">
+              <label>Room Price ($ CAD / night) *</label>
+              <input
+                className={dirtyClass('room_price')}
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.room_price}
+                required
+                onChange={(e) => setFormData({ ...formData, room_price: e.target.value })}
+                disabled={isProcessing}
+              />
+              {selectedPreset.price !== '' && (
+                <p className="field-hint-text">
+                  Default price: ${Number(selectedPreset.price).toFixed(2)} CAD / night
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Identity Group */}

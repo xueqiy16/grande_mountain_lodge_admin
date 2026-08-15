@@ -244,6 +244,9 @@ const GuestFolio = ({
       const phone = (g?.phone || '').replace(/\D/g, ''); // digits only for clean phone checks
       const roomNumber = String(r?.room_number ?? '').trim().toLowerCase();
       const roomCode = (r?.code || r?.room_types?.code || '').trim().toLowerCase();
+      // Booking reference (e.g. "GML-10482"): matched case-insensitively. The dash is
+      // kept as-is (not stripped), so a typed hyphen is required to match one.
+      const bookingRef = String(b?.booking_reference ?? b?.booking_id ?? '').trim().toLowerCase();
       const checkIn = (b?.check_in || '').trim().toLowerCase();
       const checkOut = (b?.check_out || '').trim().toLowerCase();
 
@@ -264,6 +267,8 @@ const GuestFolio = ({
         (cleanQueryPhone.length > 0 && phone.startsWith(cleanQueryPhone)) ||
         roomNumber.startsWith(q) ||
         roomCode.startsWith(q) ||
+        bookingRef.startsWith(q) ||
+        bookingRef.includes(q) ||
         checkIn.startsWith(q) ||
         checkOut.startsWith(q) ||
         dateInRange
@@ -771,7 +776,7 @@ const GuestFolio = ({
       <input
         type="text"
         className="folio-search"
-        placeholder="Search by name, phone, email, room, or stay date (YYYY-MM-DD)..."
+        placeholder="Search by name, phone, email, room, stay date (YYYY-MM-DD), or booking ref"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />

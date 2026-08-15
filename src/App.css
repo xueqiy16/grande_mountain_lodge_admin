@@ -168,6 +168,16 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 600;
+  /* Non-clickable organizational section titles: muted + not interactive. */
+  color: #94a3b8; /* slate-400 */
+  cursor: default;
+  user-select: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .nav-label {
+    color: #64748b; /* slate-500 */
+  }
 }
 
 .nav-item {
