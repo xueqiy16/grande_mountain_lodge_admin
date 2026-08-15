@@ -607,7 +607,7 @@ function App() {
                           <div className="view-header"><h2>Expected Check-Outs</h2><div className="date-selector"><label>DATE</label><input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} /></div></div>
                           {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').length > 0 ? (
                             <table className="pms-table">
-                              <thead><tr><th style={{ width: '150px' }}>Guest Name</th><th style={{ width: '110px' }}>Room</th><th className="col-tight">Stay Dates</th><th className="col-tight">Outstanding</th><th style={{ width: '240px' }}>Action</th></tr></thead>
+                              <thead><tr><th style={{ width: '26%', minWidth: '180px' }}>Guest Name</th><th style={{ width: '16%', minWidth: '110px' }}>Room</th><th style={{ width: '20%' }}>Stay Dates</th><th style={{ width: '16%' }}>Outstanding</th><th style={{ width: '22%', minWidth: '200px' }}>Action</th></tr></thead>
                               <tbody>
                                 {bookings.filter(b => normalizeDate(b.check_out) === departureDate && b.booking_status === 'checked_in').map(booking => {
                                   const rt = booking.rooms?.room_types;
@@ -615,15 +615,15 @@ function App() {
                                   const clearedForCheckout = roundToCents(calculateOutstandingBalance(booking)) <= 0;
                                   return (
                                   <tr key={booking.booking_id}>
-                                    <td style={{ maxWidth: '150px' }}><strong className="truncate-cell">{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
+                                    <td><strong>{booking.guests?.first_name} {booking.guests?.last_name}</strong></td>
                                     <td>
                                       <div className="guest-cell">
                                         <strong>Room {booking.rooms?.room_number ?? 'N/A'}</strong>
                                         <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{roomTypeLabel}</span>
                                       </div>
                                     </td>
-                                    <td className="col-tight">{booking.check_in} to {booking.check_out}</td>
-                                    <td className="col-tight" style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
+                                    <td style={{ whiteSpace: 'nowrap' }}>{booking.check_in} to {booking.check_out}</td>
+                                    <td style={{ color: '#ef4444' }}>${Number(calculateOutstandingBalance(booking)).toFixed(2)}</td>
                                     <td>
                                       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                                         <button
