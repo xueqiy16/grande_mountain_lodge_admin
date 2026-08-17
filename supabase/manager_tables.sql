@@ -8,24 +8,50 @@
 -- Dynamic staff roster that powers every "Staff Member" dropdown across LodgeOS.
 -- Deactivating a member (is_active = false) instantly removes them from future
 -- dropdown options while preserving the historical record on past folios.
+
+-- Position ENUM. A free-text description column (other_position) captures the
+-- specifics when position = 'other'.
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'staff_position') then
+    create type public.staff_position as enum (
+      'manager',
+      'assistant_manager',
+      'front_desk',
+      'maintenance',
+      'housekeeping',
+      'housekeeping_part_time',
+      'other'
+    );
+  end if;
+end$$;
+
 create table if not exists public.staff_member (
-  staff_id    uuid primary key default gen_random_uuid(),
-  first_name  text        not null,
-  middle_name text,
-  last_name   text        not null,
-  hire_date   date,
-  position    text        not null default 'Front Desk',
-  hourly_pay  numeric(10,2),
-  staff_notes text,
-  is_active   boolean     not null default true,
-  created_at  timestamptz not null default now()
+  staff_id              uuid primary key default gen_random_uuid(),
+  first_name            text not null,
+  middle_name           text,
+  last_name             text not null,
+  hire_date             date,
+  position              public.staff_position not null default 'front_desk',
+  other_position        text,
+  second_position       public.staff_position,
+  other_second_position text,
+  hourly_pay            numeric(10,2),
+  staff_notes           text,
+  is_active             boolean not null default true,
+  created_at            timestamptz not null default now()
 );
+
+-- Additive columns for installs created before the second-position fields existed.
+alter table public.staff_member add column if not exists other_position        text;
+alter table public.staff_member add column if not exists second_position       public.staff_position;
+alter table public.staff_member add column if not exists other_second_position text;
 
 -- Seed with the existing hard-coded roster (only inserts the first time).
 insert into public.staff_member (first_name, last_name, position)
 select split_part(name, ' ', 1),
        trim(substring(name from position(' ' in name) + 1)),
-       'Front Desk'
+       'front_desk'
 from (values
   ('Roxanne Gueutal'),
   ('Sydney Fulop-Gueutal'),

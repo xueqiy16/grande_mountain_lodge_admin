@@ -1,6 +1,23 @@
 import React, { useState } from 'react';
 
-const POSITION_OPTIONS = ['Manager', 'Front Desk', 'Housekeeping', 'Maintenance'];
+// Position ENUM mapping (label shown in UI -> stored public.staff_member.position value).
+const POSITION_OPTIONS = [
+  { value: 'manager', label: 'Manager' },
+  { value: 'assistant_manager', label: 'Assistant Manager' },
+  { value: 'front_desk', label: 'Front Desk' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'housekeeping', label: 'Housekeeping' },
+  { value: 'housekeeping_part_time', label: 'Housekeeping (Part Time)' },
+  { value: 'other', label: 'Other' }
+];
+
+// Resolve the human-readable label for a stored position enum value. For 'other'
+// the manager-entered custom description takes precedence.
+const positionLabel = (value, other) => {
+  if (!value) return '—';
+  if (value === 'other') return other || 'Other';
+  return POSITION_OPTIONS.find(o => o.value === value)?.label || value;
+};
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -23,7 +40,10 @@ const blankStaffForm = () => ({
   middle_name: '',
   last_name: '',
   hire_date: '',
-  position: 'Front Desk',
+  position: '',
+  other_position: '',
+  second_position: '',
+  other_second_position: '',
   hourly_pay: '',
   staff_notes: ''
 });
@@ -58,7 +78,10 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
       middle_name: staff.middle_name || '',
       last_name: staff.last_name || '',
       hire_date: (staff.hire_date || '').slice(0, 10),
-      position: staff.position || 'Front Desk',
+      position: staff.position || '',
+      other_position: staff.other_position || '',
+      second_position: staff.second_position || '',
+      other_second_position: staff.other_second_position || '',
       hourly_pay: staff.hourly_pay != null ? String(staff.hourly_pay) : '',
       staff_notes: staff.staff_notes || ''
     });
@@ -76,8 +99,17 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
 
   const saveStaff = async () => {
     // Required fields: first_name, last_name, position (all NOT NULL).
-    if (!staffForm.first_name.trim() || !staffForm.last_name.trim() || !staffForm.position.trim()) {
+    if (!staffForm.first_name.trim() || !staffForm.last_name.trim() || !staffForm.position) {
       setStaffError('First name, last name, and position are required.');
+      return;
+    }
+    // "Other" positions require a custom description.
+    if (staffForm.position === 'other' && !staffForm.other_position.trim()) {
+      setStaffError('Please describe the position for "Other".');
+      return;
+    }
+    if (staffForm.second_position === 'other' && !staffForm.other_second_position.trim()) {
+      setStaffError('Please describe the second position for "Other".');
       return;
     }
     setSavingStaff(true);
@@ -87,7 +119,10 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
       middle_name: staffForm.middle_name?.trim() || null,
       last_name: staffForm.last_name.trim(),
       hire_date: staffForm.hire_date || null,
-      position: staffForm.position.trim(),
+      position: staffForm.position,
+      other_position: staffForm.position === 'other' ? staffForm.other_position.trim() : null,
+      second_position: staffForm.second_position || null,
+      other_second_position: staffForm.second_position === 'other' ? staffForm.other_second_position.trim() : null,
       hourly_pay: staffForm.hourly_pay ? parseFloat(staffForm.hourly_pay) : null,
       staff_notes: staffForm.staff_notes?.trim() || null
     };
@@ -146,7 +181,10 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
         {rows.map(s => (
           <tr key={s.staff_id}>
             <td><strong style={past ? { color: '#94a3b8' } : undefined}>{staffDisplayName(s)}</strong></td>
-            <td><span style={{ color: past ? '#94a3b8' : '#64748b' }}>{s.position || '—'}</span></td>
+            <td><span style={{ color: past ? '#94a3b8' : '#64748b' }}>
+              {positionLabel(s.position, s.other_position)}
+              {s.second_position ? ` / ${positionLabel(s.second_position, s.other_second_position)}` : ''}
+            </span></td>
             <td style={{ whiteSpace: 'nowrap', color: past ? '#94a3b8' : undefined }}>{fmtDate(s.created_at)}</td>
             <td>
               {past ? (
@@ -291,11 +329,57 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
                   <label>Position *</label>
                   <select
                     value={staffForm.position}
-                    onChange={(e) => setStaffForm({ ...staffForm, position: e.target.value })}
+                    onChange={(e) => {
+                      const position = e.target.value;
+                      // Clear the custom description whenever it's no longer "Other".
+                      setStaffForm({ ...staffForm, position, other_position: position === 'other' ? staffForm.other_position : '' });
+                    }}
                   >
-                    {POSITION_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                    <option value="">Select Position</option>
+                    {POSITION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
+                <div className="detail-field">
+                  <label>Second Position</label>
+                  <select
+                    value={staffForm.second_position}
+                    onChange={(e) => {
+                      const second_position = e.target.value;
+                      setStaffForm({ ...staffForm, second_position, other_second_position: second_position === 'other' ? staffForm.other_second_position : '' });
+                    }}
+                  >
+                    <option value="">None</option>
+                    {POSITION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {(staffForm.position === 'other' || staffForm.second_position === 'other') && (
+                <div className="detail-grid">
+                  {staffForm.position === 'other' ? (
+                    <div className="detail-field">
+                      <label>Position Description *</label>
+                      <input
+                        value={staffForm.other_position}
+                        onChange={(e) => setStaffForm({ ...staffForm, other_position: e.target.value })}
+                        placeholder="Describe the position"
+                      />
+                    </div>
+                  ) : <div className="detail-field" />}
+                  {staffForm.second_position === 'other' && (
+                    <div className="detail-field">
+                      <label>Second Position Description *</label>
+                      <input
+                        value={staffForm.other_second_position}
+                        onChange={(e) => setStaffForm({ ...staffForm, other_second_position: e.target.value })}
+                        placeholder="Describe the second position"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="detail-grid">
                 <div className="detail-field">
                   <label>Hourly Pay ($ CAD / hr)</label>
                   <input
@@ -307,6 +391,7 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
                     onChange={(e) => setStaffForm({ ...staffForm, hourly_pay: e.target.value })}
                   />
                 </div>
+                <div className="detail-field" />
               </div>
 
               <div className="detail-field full-span">
