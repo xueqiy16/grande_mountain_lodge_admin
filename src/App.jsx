@@ -146,10 +146,12 @@ function App() {
       .eq('id', 1)
       .maybeSingle();
     if (error) {
+      // Graceful fallback: keep the discount at 0 while the record is missing/loading.
       console.error('SETTINGS FETCH ERROR:', error);
+      setWebsiteDiscount(0);
       return;
     }
-    if (data) setWebsiteDiscount(Number(data.website_discount ?? 0));
+    setWebsiteDiscount(Number(data?.website_discount ?? 0));
   };
 
   const saveWebsiteDiscount = async (value) => {

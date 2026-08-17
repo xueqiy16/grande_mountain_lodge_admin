@@ -61,8 +61,9 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
   const [discountDraft, setDiscountDraft] = useState(String(websiteDiscount ?? 0));
   const [savingDiscount, setSavingDiscount] = useState(false);
 
-  const presentStaff = staffRecords.filter(s => s.is_active);
-  const pastStaff = staffRecords.filter(s => !s.is_active);
+  // Present = active staff (is_active === true); Past = archived (is_active === false).
+  const presentStaff = staffRecords.filter(s => s.is_active === true);
+  const pastStaff = staffRecords.filter(s => s.is_active === false);
 
   const openAdd = () => {
     setEditingStaff(null);
