@@ -4,21 +4,25 @@
 -- Manager tab. It is idempotent and safe to re-run.
 -- =============================================================================
 
--- 1) STAFF ------------------------------------------------------------------
+-- 1) STAFF MEMBER -----------------------------------------------------------
 -- Dynamic staff roster that powers every "Staff Member" dropdown across LodgeOS.
 -- Deactivating a member (is_active = false) instantly removes them from future
 -- dropdown options while preserving the historical record on past folios.
-create table if not exists public.staff (
+create table if not exists public.staff_member (
   staff_id    uuid primary key default gen_random_uuid(),
   first_name  text        not null,
-  last_name   text        not null default '',
-  role        text        not null default 'Front Desk',
+  middle_name text,
+  last_name   text        not null,
+  hire_date   date,
+  position    text        not null default 'Front Desk',
+  hourly_pay  numeric(10,2),
+  staff_notes text,
   is_active   boolean     not null default true,
   created_at  timestamptz not null default now()
 );
 
 -- Seed with the existing hard-coded roster (only inserts the first time).
-insert into public.staff (first_name, last_name, role)
+insert into public.staff_member (first_name, last_name, position)
 select split_part(name, ' ', 1),
        trim(substring(name from position(' ' in name) + 1)),
        'Front Desk'
@@ -31,7 +35,7 @@ from (values
   ('Carmi Punzalan'),
   ('Nicholas Aki-Akpotha')
 ) as seed(name)
-where not exists (select 1 from public.staff);
+where not exists (select 1 from public.staff_member);
 
 -- 2) HOTEL SETTINGS ---------------------------------------------------------
 -- Single-row key store for lodge-wide configuration. website_discount is a

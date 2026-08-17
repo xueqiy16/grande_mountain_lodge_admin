@@ -38,7 +38,10 @@ function App() {
   const activeStaffNames = staffRecords.length
     ? staffRecords
         .filter(s => s.is_active)
-        .map(s => `${s.first_name || ''} ${s.last_name || ''}`.trim())
+        .map(s => {
+          const mid = s.middle_name ? `${s.middle_name} ` : '';
+          return `${s.first_name || ''} ${mid}${s.last_name || ''}`.replace(/\s+/g, ' ').trim();
+        })
         .filter(Boolean)
     : STAFF_MEMBERS;
   const [searchTerm, setSearchTerm] = useState('');
@@ -126,7 +129,7 @@ function App() {
   // working off the hard-coded STAFF_MEMBERS fallback (activeStaffNames).
   const fetchStaff = async () => {
     const { data, error } = await supabase
-      .from('staff')
+      .from('staff_member')
       .select('*')
       .order('created_at', { ascending: true });
     if (error) {

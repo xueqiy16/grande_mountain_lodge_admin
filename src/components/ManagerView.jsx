@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const ROLE_OPTIONS = ['Manager', 'Front Desk', 'Housekeeping', 'Maintenance', 'Night Audit'];
+const POSITION_OPTIONS = ['Manager', 'Front Desk', 'Housekeeping', 'Maintenance', 'Night Audit'];
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -11,9 +11,22 @@ const fmtDate = (iso) => {
   }
 };
 
-const fullName = (s) => `${s.first_name || ''} ${s.last_name || ''}`.trim();
+// Canonical staff display name: First [Middle ]Last (e.g. "Jadeyn JF Fulop-Gueutal").
+export const staffDisplayName = (s) => {
+  if (!s) return '';
+  const mid = s.middle_name ? `${s.middle_name} ` : '';
+  return `${s.first_name || ''} ${mid}${s.last_name || ''}`.replace(/\s+/g, ' ').trim();
+};
 
-const blankStaffForm = () => ({ first_name: '', last_name: '', role: 'Front Desk' });
+const blankStaffForm = () => ({
+  first_name: '',
+  middle_name: '',
+  last_name: '',
+  hire_date: '',
+  position: 'Front Desk',
+  hourly_pay: '',
+  staff_notes: ''
+});
 
 const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscount = 0, onSaveDiscount }) => {
   const [staffTab, setStaffTab] = useState('present'); // 'present' | 'past'
@@ -40,7 +53,15 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
 
   const openEdit = (staff) => {
     setEditingStaff(staff);
-    setStaffForm({ first_name: staff.first_name || '', last_name: staff.last_name || '', role: staff.role || 'Front Desk' });
+    setStaffForm({
+      first_name: staff.first_name || '',
+      middle_name: staff.middle_name || '',
+      last_name: staff.last_name || '',
+      hire_date: (staff.hire_date || '').slice(0, 10),
+      position: staff.position || 'Front Desk',
+      hourly_pay: staff.hourly_pay != null ? String(staff.hourly_pay) : '',
+      staff_notes: staff.staff_notes || ''
+    });
     setStaffError('');
     setIsAddOpen(true);
   };
@@ -54,22 +75,27 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
   };
 
   const saveStaff = async () => {
-    if (!staffForm.first_name.trim()) {
-      setStaffError('First name is required.');
+    // Required fields: first_name, last_name, position (all NOT NULL).
+    if (!staffForm.first_name.trim() || !staffForm.last_name.trim() || !staffForm.position.trim()) {
+      setStaffError('First name, last name, and position are required.');
       return;
     }
     setSavingStaff(true);
     setStaffError('');
     const payload = {
       first_name: staffForm.first_name.trim(),
+      middle_name: staffForm.middle_name?.trim() || null,
       last_name: staffForm.last_name.trim(),
-      role: staffForm.role || 'Front Desk'
+      hire_date: staffForm.hire_date || null,
+      position: staffForm.position.trim(),
+      hourly_pay: staffForm.hourly_pay ? parseFloat(staffForm.hourly_pay) : null,
+      staff_notes: staffForm.staff_notes?.trim() || null
     };
     let error;
     if (editingStaff) {
-      ({ error } = await supabase.from('staff').update(payload).eq('staff_id', editingStaff.staff_id));
+      ({ error } = await supabase.from('staff_member').update(payload).eq('staff_id', editingStaff.staff_id));
     } else {
-      ({ error } = await supabase.from('staff').insert([{ ...payload, is_active: true }]));
+      ({ error } = await supabase.from('staff_member').insert([{ ...payload, is_active: true }]));
     }
     setSavingStaff(false);
     if (error) {
@@ -81,7 +107,7 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
   };
 
   const setActive = async (staff, isActive) => {
-    const { error } = await supabase.from('staff').update({ is_active: isActive }).eq('staff_id', staff.staff_id);
+    const { error } = await supabase.from('staff_member').update({ is_active: isActive }).eq('staff_id', staff.staff_id);
     if (error) {
       alert(error.message || 'Failed to update staff member.');
       return;
@@ -105,6 +131,38 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
     setSavingDiscount(false);
     if (ok !== false) setEditingDiscount(false);
   };
+
+  const renderStaffTable = (rows, past) => (
+    <table className="pms-table">
+      <thead>
+        <tr>
+          <th style={{ width: '34%' }}>Staff Name</th>
+          <th style={{ width: '26%' }}>Role / Position</th>
+          <th style={{ width: '20%' }}>Date Added</th>
+          <th style={{ width: '20%', minWidth: '180px' }}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(s => (
+          <tr key={s.staff_id}>
+            <td><strong style={past ? { color: '#94a3b8' } : undefined}>{staffDisplayName(s)}</strong></td>
+            <td><span style={{ color: past ? '#94a3b8' : '#64748b' }}>{s.position || '—'}</span></td>
+            <td style={{ whiteSpace: 'nowrap', color: past ? '#94a3b8' : undefined }}>{fmtDate(s.created_at)}</td>
+            <td>
+              {past ? (
+                <button className="tool-btn" onClick={() => setActive(s, true)}>Reactivate</button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                  <button className="tool-btn" onClick={() => openEdit(s)}>Edit</button>
+                  <button className="tool-btn btn-danger" onClick={() => setActive(s, false)}>Deactivate</button>
+                </div>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 
   return (
     <div className="folio-view manager-view">
@@ -137,62 +195,13 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
         </div>
 
         {staffTab === 'present' ? (
-          presentStaff.length > 0 ? (
-            <table className="pms-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '34%' }}>Staff Name</th>
-                  <th style={{ width: '26%' }}>Role / Position</th>
-                  <th style={{ width: '20%' }}>Date Added</th>
-                  <th style={{ width: '20%', minWidth: '180px' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {presentStaff.map(s => (
-                  <tr key={s.staff_id}>
-                    <td><strong>{fullName(s)}</strong></td>
-                    <td><span style={{ color: '#64748b' }}>{s.role || '—'}</span></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(s.created_at)}</td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
-                        <button className="tool-btn" onClick={() => openEdit(s)}>Edit</button>
-                        <button className="tool-btn btn-danger" onClick={() => setActive(s, false)}>Deactivate</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-view">No active staff members. Add one to get started.</div>
-          )
+          presentStaff.length > 0
+            ? renderStaffTable(presentStaff, false)
+            : <div className="empty-view">No active staff members. Add one to get started.</div>
         ) : (
-          pastStaff.length > 0 ? (
-            <table className="pms-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '34%' }}>Staff Name</th>
-                  <th style={{ width: '26%' }}>Role / Position</th>
-                  <th style={{ width: '20%' }}>Date Added</th>
-                  <th style={{ width: '20%', minWidth: '180px' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pastStaff.map(s => (
-                  <tr key={s.staff_id}>
-                    <td><strong style={{ color: '#94a3b8' }}>{fullName(s)}</strong></td>
-                    <td><span style={{ color: '#94a3b8' }}>{s.role || '—'}</span></td>
-                    <td style={{ whiteSpace: 'nowrap', color: '#94a3b8' }}>{fmtDate(s.created_at)}</td>
-                    <td>
-                      <button className="tool-btn" onClick={() => setActive(s, true)}>Reactivate</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-view">No archived staff members.</div>
-          )
+          pastStaff.length > 0
+            ? renderStaffTable(pastStaff, true)
+            : <div className="empty-view">No archived staff members.</div>
         )}
       </section>
 
@@ -251,29 +260,75 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
                   />
                 </div>
                 <div className="detail-field">
-                  <label>Last Name</label>
+                  <label>Middle Name</label>
+                  <input
+                    value={staffForm.middle_name}
+                    onChange={(e) => setStaffForm({ ...staffForm, middle_name: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Last Name *</label>
                   <input
                     value={staffForm.last_name}
                     onChange={(e) => setStaffForm({ ...staffForm, last_name: e.target.value })}
                   />
                 </div>
+                <div className="detail-field">
+                  <label>Hire Date</label>
+                  <input
+                    type="date"
+                    value={staffForm.hire_date}
+                    onChange={(e) => setStaffForm({ ...staffForm, hire_date: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="detail-field">
-                <label>Role / Position</label>
-                <select
-                  value={staffForm.role}
-                  onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
-                >
-                  {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <label>Position *</label>
+                  <select
+                    value={staffForm.position}
+                    onChange={(e) => setStaffForm({ ...staffForm, position: e.target.value })}
+                  >
+                    {POSITION_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div className="detail-field">
+                  <label>Hourly Pay ($ CAD / hr)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 21.50"
+                    value={staffForm.hourly_pay}
+                    onChange={(e) => setStaffForm({ ...staffForm, hourly_pay: e.target.value })}
+                  />
+                </div>
               </div>
+
+              <div className="detail-field full-span">
+                <label>Staff Notes</label>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  placeholder="Add any notes for this staff member..."
+                  value={staffForm.staff_notes}
+                  onChange={(e) => setStaffForm({ ...staffForm, staff_notes: e.target.value })}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
+
               {staffError && <div className="form-error" style={{ color: '#ef4444', fontSize: '0.85rem' }}>{staffError}</div>}
-            <div className="manager-modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button className="tool-btn" onClick={closeStaffModal} disabled={savingStaff}>Cancel</button>
-              <button className="tool-btn primary" onClick={saveStaff} disabled={savingStaff}>
-                {savingStaff ? 'Saving…' : (editingStaff ? 'Save Changes' : 'Add Staff Member')}
-              </button>
-            </div>
+
+              <div className="manager-modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button className="tool-btn" onClick={closeStaffModal} disabled={savingStaff}>Cancel</button>
+                <button className="tool-btn primary" onClick={saveStaff} disabled={savingStaff}>
+                  {savingStaff ? 'Saving…' : (editingStaff ? 'Save Changes' : 'Add Staff Member')}
+                </button>
+              </div>
             </div>
           </div>
         </div>
