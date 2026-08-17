@@ -2249,15 +2249,61 @@ textarea.input-required {
 }
 
 /* Add / Edit staff modal internals */
+/* Staff modal: constrain height and split into fixed header, scrollable body,
+   and a sticky footer so long forms never clip on smaller screens. */
 .manager-modal {
-  max-width: 480px;
+  max-width: 520px;
   width: 100%;
+  max-height: 90vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.manager-modal .modal-header {
+  flex-shrink: 0;
 }
 
 .manager-modal-body {
-  padding: 4px 4px 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Two-column rows inside the staff modal (override the default 3-col grid) with
+   generous vertical breathing room between each field's input and the next label. */
+.manager-modal .detail-grid {
+  grid-template-columns: repeat(2, 1fr);
+  column-gap: 16px;
+  row-gap: 16px;
+  margin: 0;
+}
+
+.manager-modal .detail-field textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  resize: vertical;
 }
 
 .manager-modal-footer {
-  margin-top: 20px;
+  flex-shrink: 0;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  background: white;
+}
+
+@media (max-width: 640px) {
+  .manager-modal .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }

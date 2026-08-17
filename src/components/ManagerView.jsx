@@ -408,13 +408,13 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
               </div>
 
               {staffError && <div className="form-error" style={{ color: '#ef4444', fontSize: '0.85rem' }}>{staffError}</div>}
+            </div>
 
-              <div className="manager-modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button className="tool-btn" onClick={closeStaffModal} disabled={savingStaff}>Cancel</button>
-                <button className="tool-btn primary" onClick={saveStaff} disabled={savingStaff}>
-                  {savingStaff ? 'Saving…' : (editingStaff ? 'Save Changes' : 'Add Staff Member')}
-                </button>
-              </div>
+            <div className="manager-modal-footer">
+              <button className="tool-btn" onClick={closeStaffModal} disabled={savingStaff}>Cancel</button>
+              <button className="tool-btn primary" onClick={saveStaff} disabled={savingStaff}>
+                {savingStaff ? 'Saving…' : (editingStaff ? 'Save Changes' : 'Add Staff Member')}
+              </button>
             </div>
           </div>
         </div>
