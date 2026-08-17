@@ -13,6 +13,7 @@ import { computeTotalStayCost } from './lib/costing';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './Login';
+import ResetPassword from './pages/ResetPassword';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -326,6 +327,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route 
           path="/" 
           element={

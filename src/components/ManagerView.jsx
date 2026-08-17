@@ -1,4 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
+// The three system auth accounts managed from the Authentication tab.
+const AUTH_ACCOUNTS = [
+  { email: 'zypeny@gmail.com', role: 'Manager' },
+  { email: 'reception@grandemountainlodge.com', role: 'Front Desk' },
+  { email: 'manager@grandemountainlodge.com', role: 'Manager' }
+];
+
+const RECOVERY_COOLDOWN_SECONDS = 60;
 
 // Position ENUM mapping (label shown in UI -> stored public.staff_member.position value).
 const POSITION_OPTIONS = [
@@ -49,6 +58,8 @@ const blankStaffForm = () => ({
 });
 
 const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscount = 0, onSaveDiscount }) => {
+  // Top-level horizontal section: 'staff' | 'discount' | 'auth'.
+  const [activeSection, setActiveSection] = useState('staff');
   const [staffTab, setStaffTab] = useState('present'); // 'present' | 'past'
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null); // staff row being edited
@@ -60,6 +71,53 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
   const [editingDiscount, setEditingDiscount] = useState(false);
   const [discountDraft, setDiscountDraft] = useState(String(websiteDiscount ?? 0));
   const [savingDiscount, setSavingDiscount] = useState(false);
+
+  // Authentication tab state
+  const [recoverySending, setRecoverySending] = useState(''); // email currently sending
+  const [cooldowns, setCooldowns] = useState({}); // email -> seconds remaining
+  const [toast, setToast] = useState(null); // { type: 'success' | 'error', text }
+  const toastTimer = useRef(null);
+
+  const notify = (type, text) => {
+    setToast({ type, text });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  };
+
+  // Tick down any active cooldown timers once per second.
+  useEffect(() => {
+    const hasActive = Object.values(cooldowns).some(v => v > 0);
+    if (!hasActive) return;
+    const id = setInterval(() => {
+      setCooldowns(prev => {
+        const next = {};
+        let changed = false;
+        for (const [email, secs] of Object.entries(prev)) {
+          const v = secs - 1;
+          if (v > 0) next[email] = v;
+          if (v !== secs) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [cooldowns]);
+
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
+  const handleSendRecovery = async (email) => {
+    if (recoverySending || (cooldowns[email] || 0) > 0) return;
+    setRecoverySending(email);
+    const redirectTo = `${window.location.origin}/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    setRecoverySending('');
+    if (error) {
+      notify('error', `Failed to send recovery email: ${error.message}`);
+      return;
+    }
+    notify('success', `Password recovery email successfully sent to ${email}`);
+    setCooldowns(prev => ({ ...prev, [email]: RECOVERY_COOLDOWN_SECONDS }));
+  };
 
   // Present = active staff (is_active === true); Past = archived (is_active === false).
   const presentStaff = staffRecords.filter(s => s.is_active === true);
@@ -209,7 +267,30 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
         <h2>Manager</h2>
       </div>
 
+      {/* ============================ HORIZONTAL SECTION TABS ============================ */}
+      <div className="manager-tabs">
+        <button
+          className={`manager-tab ${activeSection === 'staff' ? 'active' : ''}`}
+          onClick={() => setActiveSection('staff')}
+        >
+          Staff Management
+        </button>
+        <button
+          className={`manager-tab ${activeSection === 'discount' ? 'active' : ''}`}
+          onClick={() => setActiveSection('discount')}
+        >
+          Discount
+        </button>
+        <button
+          className={`manager-tab ${activeSection === 'auth' ? 'active' : ''}`}
+          onClick={() => setActiveSection('auth')}
+        >
+          Authentication
+        </button>
+      </div>
+
       {/* ============================ STAFF MANAGEMENT ============================ */}
+      {activeSection === 'staff' && (
       <section className="manager-section">
         <div className="manager-section-head">
           <h3>Staff Management</h3>
@@ -243,8 +324,10 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
             : <div className="empty-view">No archived staff members.</div>
         )}
       </section>
+      )}
 
       {/* ============================ DISCOUNT CONFIG ============================ */}
+      {activeSection === 'discount' && (
       <section className="manager-section">
         <div className="manager-section-head">
           <h3>Discount</h3>
@@ -279,6 +362,70 @@ const ManagerView = ({ supabase, staffRecords = [], refreshStaff, websiteDiscoun
           It is applied as a {Number(websiteDiscount ?? 0)}% discount off of the total taxed room price.
         </p>
       </section>
+      )}
+
+      {/* ============================ AUTHENTICATION ============================ */}
+      {activeSection === 'auth' && (
+      <section className="manager-section">
+        <div className="manager-section-head">
+          <h3>Authentication</h3>
+        </div>
+        <table className="pms-table">
+          <thead>
+            <tr>
+              <th style={{ width: '38%' }}>User / Email</th>
+              <th style={{ width: '16%' }}>Role</th>
+              <th style={{ width: '18%' }}>Password</th>
+              <th style={{ width: '28%', minWidth: '240px' }}>
+                Reset Password
+                <div style={{ fontWeight: 400, textTransform: 'none', fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>
+                  Send a password recovery email to the user
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {AUTH_ACCOUNTS.map(acct => {
+              const cooldown = cooldowns[acct.email] || 0;
+              const sending = recoverySending === acct.email;
+              return (
+                <tr key={acct.email}>
+                  <td><strong>{acct.email}</strong></td>
+                  <td><span style={{ color: '#64748b' }}>{acct.role}</span></td>
+                  <td>
+                    {/* Never expose real passwords — render non-copyable bullets only. */}
+                    <span className="pw-mask" style={{ userSelect: 'none', fontFamily: 'monospace', letterSpacing: '0.2em', color: '#94a3b8' }}>
+                      ••••••••••••
+                    </span>
+                  </td>
+                  <td>
+                    <button
+                      className="tool-btn"
+                      onClick={() => handleSendRecovery(acct.email)}
+                      disabled={sending || cooldown > 0}
+                    >
+                      {sending && <span className="btn-spinner" aria-hidden="true" />}
+                      {sending
+                        ? 'Sending…'
+                        : cooldown > 0
+                          ? `Resend in ${cooldown}s`
+                          : 'Send Password Recovery'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+      )}
+
+      {/* Toast feedback for auth actions */}
+      {toast && (
+        <div className={`toast-notification ${toast.type === 'error' ? 'toast-error' : 'toast-success'}`}>
+          {toast.text}
+        </div>
+      )}
 
       {/* ============================ ADD / EDIT STAFF MODAL ============================ */}
       {isAddOpen && (
