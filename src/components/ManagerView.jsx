@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const POSITION_OPTIONS = ['Manager', 'Front Desk', 'Housekeeping', 'Maintenance', 'Night Audit'];
+const POSITION_OPTIONS = ['Manager', 'Front Desk', 'Housekeeping', 'Maintenance'];
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
