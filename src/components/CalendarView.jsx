@@ -1,55 +1,61 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ROOM_TYPE_PRESETS } from '../lib/constants';
 
-// Fixed Y-axis order of room types (matches ROOM_TYPE_PRESETS names exactly).
-const ROOM_TYPE_ROWS = [
-  'Standard Queen Non-Smoking',
-  'Studio Queen Non-Smoking',
-  'Studio Queen Smoking',
-  'Studio Double Queen Non-Smoking',
-  'Studio Double Queen Smoking',
-  'Suite King Non-Smoking',
-  'Suite Queen Non-Smoking'
+// Tape-chart inventory: room types in display order, each with its physical rooms.
+const ROOM_GROUPS = [
+  { code: 'STD-Q-NS',  typeName: 'Standard Queen Non-Smoking',      rooms: [225, 226] },
+  { code: 'STU-Q-NS',  typeName: 'Studio Queen Non-Smoking',        rooms: [105, 113, 116, 122, 123, 207, 210, 212, 213, 219, 222] },
+  { code: 'STU-Q-SM',  typeName: 'Studio Queen Smoking',            rooms: [205] },
+  { code: 'STU-QQ-NS', typeName: 'Studio Double Queen Non-Smoking', rooms: [101, 102, 103, 108, 109, 111, 112, 114, 118, 120, 209, 211, 214, 215, 217, 218, 220, 221, 223] },
+  { code: 'STU-QQ-SM', typeName: 'Studio Double Queen Smoking',     rooms: [202, 203, 208] },
+  { code: 'STE-K-NS',  typeName: 'Suite King Non-Smoking',          rooms: [227] },
+  { code: 'STE-Q-NS',  typeName: 'Suite Queen Non-Smoking',         rooms: [216, 224] }
 ];
 
-// Short code shown in the skinny left column; falls back to the name.
-const codeFor = (typeName) => ROOM_TYPE_PRESETS[typeName]?.code || typeName;
+const ROOM_ROWS = ROOM_GROUPS.flatMap((g, groupIdx) =>
+  g.rooms.map((roomNumber, i) => ({
+    code: g.code,
+    typeName: g.typeName,
+    roomNumber: String(roomNumber),
+    groupIdx,
+    isFirstInGroup: i === 0,
+    isLastInGroup: i === g.rooms.length - 1
+  }))
+);
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // Layout constants. Day columns are flexible (flex:1) so the whole half-month
-// span fits the container width with NO horizontal scroll; only these fixed
-// widths are pinned. Bar geometry is expressed as % of the day track.
-const LABEL_W = 104;   // px skinny sticky room-code column
-const BAR_H = 24;      // px reservation bar height
-const BAR_GAP = 4;     // px vertical gap between stacked (overlapping) bars
-const ROW_PAD = 8;     // px vertical padding inside a room-type row
-const HALF_SPLIT = 15; // first half = days 1..15, second half = 16..end
+// span fits the container width with NO horizontal scroll.
+const TYPE_W = 78;     // px sticky Type column
+const ROOM_W = 52;     // px sticky Room number column
+const LABEL_W = TYPE_W + ROOM_W;
+const BAR_H = 22;
+const BAR_GAP = 3;
+const ROW_PAD = 5;
+const HALF_SPLIT = 15;
 const POPOVER_W = 320;
-const POPOVER_H = 230;  // estimated height used for deterministic placement
-const RIGHT_MARGIN = 48; // generous buffer from the right edge (keeps close button clear)
-const LEFT_MARGIN = 16;  // buffer from the left edge
-const EDGE_PAD = 16;     // vertical buffer from top/bottom edges
+const POPOVER_H = 250;
+const RIGHT_MARGIN = 48;
+const LEFT_MARGIN = 16;
+const EDGE_PAD = 16;
 
-// Local YYYY-MM-DD (never toISOString(), which is UTC and can shift a day).
 const toISO = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 const localTodayISO = () => {
   const d = new Date();
   return toISO(d.getFullYear(), d.getMonth(), d.getDate());
 };
 
-// Status legend (dynamic operational status relative to today).
 const STATUS_META = {
-  confirmed:     { label: 'Confirmed',       color: '#f97316' }, // orange
-  checkin_today: { label: 'Check In Today',  color: '#eab308' }, // yellow
-  inhouse:       { label: 'In House',        color: '#22c55e' }, // green
-  departing:     { label: 'Departing Today', color: '#3b82f6' }, // blue
-  checked_out:   { label: 'Checked Out',     color: '#94a3b8' }  // gray
+  confirmed:     { label: 'Confirmed',       color: '#f97316' },
+  checkin_today: { label: 'Check In Today',  color: '#eab308' },
+  inhouse:       { label: 'In House',        color: '#22c55e' },
+  departing:     { label: 'Departing Today', color: '#3b82f6' },
+  checked_out:   { label: 'Checked Out',     color: '#94a3b8' }
 };
 
-// Resolve a reservation's dynamic status from booking_status + today's date.
 const resolveStatus = (b, today) => {
   const status = b?.booking_status;
   const checkIn = (b?.check_in || '').slice(0, 10);
@@ -60,6 +66,11 @@ const resolveStatus = (b, today) => {
   return 'confirmed';
 };
 
+const guestFullName = (b) =>
+  `${b?.guests?.first_name || ''} ${b?.guests?.last_name || ''}`.replace(/\s+/g, ' ').trim() || 'Guest';
+
+const roomNumberOf = (b) => String(b?.rooms?.room_number ?? b?.room_number ?? b?.room ?? '').trim();
+
 const roomCodeForBooking = (b) => {
   const rt = b?.rooms?.room_types;
   return rt?.code || ROOM_TYPE_PRESETS[rt?.name]?.code || '';
@@ -67,17 +78,15 @@ const roomCodeForBooking = (b) => {
 
 const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => {
   const today = localTodayISO();
-  // Active window = { year, month, half } where half 0 -> days 1..15, 1 -> 16..end.
   const [view, setView] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth(), half: d.getDate() > HALF_SPLIT ? 1 : 0 };
   });
   const [jumpOpen, setJumpOpen] = useState(false);
-  // Clicked reservation popover: { booking, left, top } in viewport (fixed) coords.
   const [popover, setPopover] = useState(null);
 
   const { year, month, half } = view;
-  const daysInMonth = new Date(year, month + 1, 0).getDate(); // correct for 28/29/30/31
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const startDay = half === 0 ? 1 : HALF_SPLIT + 1;
   const endDay = half === 0 ? Math.min(HALF_SPLIT, daysInMonth) : daysInMonth;
   const numDays = endDay - startDay + 1;
@@ -99,7 +108,6 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
     return out;
   }, [year, month, startDay, endDay, today]);
 
-  // Column index (0-based) of a date within the active half-month window.
   const dayIndexOf = (iso) => {
     const d = new Date(iso.slice(0, 10) + 'T00:00:00');
     const first = new Date(year, month, startDay);
@@ -107,8 +115,8 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
   };
   const clampIdx = (i) => Math.max(0, Math.min(numDays - 1, i));
 
-  // Active reservations intersecting the visible window, grouped by room type,
-  // then packed into vertical lanes so overlaps stack without breaking alignment.
+  // One timeline track per physical room. Bookings land on a row only when the
+  // booking's room number matches that row. Overlaps on the same room stack.
   const rows = useMemo(() => {
     const visible = bookings.filter(b => {
       const status = b?.booking_status;
@@ -119,9 +127,9 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
       return ci <= windowEndISO && co >= windowStartISO;
     });
 
-    return ROOM_TYPE_ROWS.map(typeName => {
-      const typeBookings = visible
-        .filter(b => b?.rooms?.room_types?.name === typeName)
+    return ROOM_ROWS.map(meta => {
+      const items = visible
+        .filter(b => roomNumberOf(b) === meta.roomNumber)
         .map(b => {
           const startIdx = clampIdx(dayIndexOf(b.check_in.slice(0, 10)));
           const endIdx = clampIdx(dayIndexOf(b.check_out.slice(0, 10)));
@@ -130,21 +138,33 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
         .sort((a, b) => a.startIdx - b.startIdx || a.endIdx - b.endIdx);
 
       const laneEnds = [];
-      typeBookings.forEach(item => {
+      items.forEach(item => {
         let lane = laneEnds.findIndex(end => end < item.startIdx);
         if (lane === -1) { lane = laneEnds.length; laneEnds.push(item.endIdx); }
         else { laneEnds[lane] = item.endIdx; }
         item.lane = lane;
       });
-      return { typeName, items: typeBookings, laneCount: Math.max(1, laneEnds.length) };
+      return { ...meta, items, laneCount: Math.max(1, laneEnds.length) };
     });
     // clampIdx/dayIndexOf derive purely from the window bounds (already listed).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, windowStartISO, windowEndISO, year, month, startDay, numDays]);
 
+  const groupedRows = useMemo(() => {
+    const groups = [];
+    let current = null;
+    rows.forEach(row => {
+      if (!current || current.code !== row.code) {
+        current = { code: row.code, typeName: row.typeName, rooms: [] };
+        groups.push(current);
+      }
+      current.rooms.push(row);
+    });
+    return groups;
+  }, [rows]);
+
   const rowHeight = (laneCount) => laneCount * BAR_H + (laneCount - 1) * BAR_GAP + ROW_PAD * 2;
 
-  // Half-month stepping.
   const goPrev = () => setView(v => v.half === 1
     ? { ...v, half: 0 }
     : (() => { const d = new Date(v.year, v.month - 1, 1); return { year: d.getFullYear(), month: d.getMonth(), half: 1 }; })());
@@ -162,22 +182,17 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Deterministic popover placement: BELOW for the top 3 room types, ABOVE for
-  // the bottom 4. Always clamped inside the viewport.
+  // Popover: below for the first 3 room-type groups, above for the rest.
   const openPopover = (e, booking) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    const typeIdx = ROOM_TYPE_ROWS.indexOf(booking?.rooms?.room_types?.name);
-    const below = typeIdx > -1 && typeIdx < 3;
+    const groupIdx = ROOM_GROUPS.findIndex(g => g.typeName === booking?.rooms?.room_types?.name);
+    const below = groupIdx > -1 && groupIdx < 3;
 
-    // Horizontal: clamp so the card (incl. its close button + box shadow) never
-    // spills past the right edge or hides behind the left edge — a generous 48px
-    // gap on the right, 16px on the left.
     const calculatedLeft = rect.left + rect.width / 2 - POPOVER_W / 2;
     const maxLeft = window.innerWidth - POPOVER_W - RIGHT_MARGIN;
     const left = Math.min(Math.max(calculatedLeft, LEFT_MARGIN), Math.max(LEFT_MARGIN, maxLeft));
 
-    // Vertical: below for top 3 room types, above for bottom 4 (clamped to viewport).
     let top = below ? rect.bottom + 8 : rect.top - POPOVER_H - 8;
     top = Math.max(EDGE_PAD, Math.min(top, window.innerHeight - POPOVER_H - EDGE_PAD));
     setPopover({ booking, left, top });
@@ -189,6 +204,17 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
     for (let y = base - 5; y <= base + 5; y++) out.push(y);
     return out;
   }, []);
+
+  const barTooltip = (b) => {
+    const statusKey = resolveStatus(b, today);
+    const balance = Number(getOutstandingBalance ? getOutstandingBalance(b) : 0).toFixed(2);
+    return [
+      guestFullName(b),
+      `${b?.check_in} → ${b?.check_out}`,
+      `Status: ${STATUS_META[statusKey]?.label || statusKey}`,
+      `Outstanding: $${balance} CAD`
+    ].join('\n');
+  };
 
   return (
     <div className="cal-view" onClick={() => { setPopover(null); setJumpOpen(false); }}>
@@ -227,9 +253,11 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
 
       <div className="cal-scroll">
         <div className="cal-matrix">
-          {/* Header row: sticky corner + day columns */}
           <div className="cal-row cal-head-row">
-            <div className="cal-corner" style={{ width: LABEL_W }}>Room</div>
+            <div className="cal-corner-pair" style={{ width: LABEL_W }}>
+              <div className="cal-corner cal-type-col" style={{ width: TYPE_W }}>Type</div>
+              <div className="cal-corner cal-room-col" style={{ width: ROOM_W }}>Room</div>
+            </div>
             <div className="cal-track">
               {days.map(d => (
                 <div key={d.iso} className={`cal-day-head ${d.isToday ? 'cal-today' : ''}`}>
@@ -241,45 +269,55 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
             </div>
           </div>
 
-          {/* Body rows: one per room type (skinny room-code label) */}
-          {rows.map(row => (
-            <div className="cal-row" key={row.typeName} style={{ height: rowHeight(row.laneCount) }}>
-              <div className="cal-label" style={{ width: LABEL_W }} title={row.typeName}>{codeFor(row.typeName)}</div>
-              <div className="cal-track">
-                {days.map(d => (
-                  <div key={d.iso} className={`cal-cell ${d.isToday ? 'cal-today-col' : ''}`} />
-                ))}
-                {row.items.map(item => {
-                  const b = item.booking;
-                  const meta = STATUS_META[resolveStatus(b, today)];
-                  const span = item.endIdx - item.startIdx + 1;
-                  const guest = `${b?.guests?.first_name || ''} ${b?.guests?.last_name || ''}`.trim();
-                  const label = `${b?.rooms?.room_number ?? '—'}: ${guest || 'Guest'}`;
-                  return (
-                    <div
-                      key={b.booking_id}
-                      className="cal-bar"
-                      title={label}
-                      onClick={(e) => openPopover(e, b)}
-                      style={{
-                        left: `calc(${(item.startIdx / numDays) * 100}% + 2px)`,
-                        width: `calc(${(span / numDays) * 100}% - 4px)`,
-                        top: ROW_PAD + item.lane * (BAR_H + BAR_GAP),
-                        height: BAR_H,
-                        background: meta.color
-                      }}
-                    >
-                      <span className="cal-bar-label">{label}</span>
+          {groupedRows.map(group => (
+            <div className="cal-group" key={group.code}>
+              <div className="cal-type-span" style={{ width: TYPE_W }} title={group.typeName}>
+                {group.code}
+              </div>
+              <div className="cal-group-body">
+                {group.rooms.map(row => (
+                  <div
+                    className="cal-row"
+                    key={`${row.code}-${row.roomNumber}`}
+                    style={{ height: rowHeight(row.laneCount) }}
+                  >
+                    <div className="cal-room-cell" style={{ width: ROOM_W }}>{row.roomNumber}</div>
+                    <div className="cal-track">
+                      {days.map(d => (
+                        <div key={d.iso} className={`cal-cell ${d.isToday ? 'cal-today-col' : ''}`} />
+                      ))}
+                      {row.items.map(item => {
+                        const b = item.booking;
+                        const meta = STATUS_META[resolveStatus(b, today)];
+                        const span = item.endIdx - item.startIdx + 1;
+                        const name = guestFullName(b);
+                        return (
+                          <div
+                            key={b.booking_id}
+                            className="cal-bar"
+                            title={barTooltip(b)}
+                            onClick={(e) => openPopover(e, b)}
+                            style={{
+                              left: `calc(${(item.startIdx / numDays) * 100}% + 2px)`,
+                              width: `calc(${(span / numDays) * 100}% - 4px)`,
+                              top: ROW_PAD + item.lane * (BAR_H + BAR_GAP),
+                              height: BAR_H,
+                              background: meta.color
+                            }}
+                          >
+                            <span className="cal-bar-label">{name}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Status legend */}
       <div className="cal-legend">
         {Object.entries(STATUS_META).map(([key, meta]) => (
           <div className="cal-legend-item" key={key}>
@@ -289,23 +327,19 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
         ))}
       </div>
 
-      {/* Room code legend */}
       <div className="cal-legend cal-code-legend">
-        {ROOM_TYPE_ROWS.map(typeName => (
-          <div className="cal-legend-item" key={typeName}>
-            <span className="cal-code-tag">{codeFor(typeName)}</span>
-            <span>{typeName}</span>
+        {ROOM_GROUPS.map(g => (
+          <div className="cal-legend-item" key={g.code}>
+            <span className="cal-code-tag">{g.code}</span>
+            <span>{g.typeName}</span>
           </div>
         ))}
       </div>
 
-      {/* Reservation popover */}
       {popover && (
         <div className="cal-popover" style={{ left: popover.left, top: popover.top }} onClick={(e) => e.stopPropagation()}>
           <button type="button" className="cal-popover-close" onClick={() => setPopover(null)} aria-label="Close">✕</button>
-          <div className="cal-popover-name">
-            {`${popover.booking?.guests?.first_name || ''} ${popover.booking?.guests?.last_name || ''}`.trim() || 'Guest'}
-          </div>
+          <div className="cal-popover-name">{guestFullName(popover.booking)}</div>
           <div className="cal-popover-ref">{popover.booking?.booking_reference || 'No reference'}</div>
           <div className="cal-popover-row">
             <span>Room</span>
@@ -314,6 +348,10 @@ const CalendarView = ({ bookings = [], getOutstandingBalance, onOpenFolio }) => 
           <div className="cal-popover-row">
             <span>Stay</span>
             <span>{popover.booking?.check_in} → {popover.booking?.check_out}</span>
+          </div>
+          <div className="cal-popover-row">
+            <span>Status</span>
+            <span>{STATUS_META[resolveStatus(popover.booking, today)]?.label}</span>
           </div>
           <div className="cal-popover-row">
             <span>Outstanding</span>

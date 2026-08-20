@@ -238,6 +238,21 @@ function App() {
     }
   };
 
+  const localTodayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // Available rooms with a confirmed/reserved stay whose check-in is today or later.
+  const hasUpcomingReservation = (room) => {
+    const today = localTodayISO();
+    return bookings.some(b =>
+      b.room_id === room.room_id &&
+      (b.booking_status === 'confirmed' || b.booking_status === 'reserved') &&
+      (normalizeDate(b.check_in) || '') >= today
+    );
+  };
+
   const handleCheckIn = (booking) => {
     // Open Check-In modal for card info
     setSelectedCheckInBooking(booking);
@@ -777,7 +792,15 @@ function App() {
                                 aria-disabled={isOutOfService}
                                 title={isOutOfService ? 'Room is out of service and cannot be booked' : undefined}
                               >
-                                <div className="room-header"><span className="room-number">{room.room_number}</span><span className={`status-badge status-${statusClass}`}>{primaryStatus}</span></div>
+                                <div className="room-header">
+                                  <span className="room-number">{room.room_number}</span>
+                                  <div className="status-badge-row">
+                                    {currentTab === 'All' && primaryStatus === 'Available' && hasUpcomingReservation(room) && (
+                                      <span className="status-reserved">RES</span>
+                                    )}
+                                    <span className={`status-badge status-${statusClass}`}>{primaryStatus}</span>
+                                  </div>
+                                </div>
                                 <div className="room-info-type">{room.room_types?.name}</div>
                                 <div className="room-info-price">${room.room_types?.nightly_rate}/night</div>
                               </div>

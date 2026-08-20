@@ -293,12 +293,40 @@ body {
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
+  border: 1px solid transparent;
 }
 
 .status-available { background: #f0fdf4; color: #16a34a; }
 .status-occupied { background: #eff6ff; color: #2563eb; }
 .status-dirty { background: #fffbeb; color: #d97706; }
-.status-out-of-service { background: #dc2626; color: #ffffff; }
+.status-out-of-service {
+  background: #ffe4e6;
+  color: #be123c;
+  border-color: #fecdd3;
+}
+
+.status-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-reserved {
+  background: #fce7f3;
+  color: #be185d;
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #fbcfe8;
+}
+
+@media (min-width: 640px) {
+  .status-reserved {
+    font-size: 0.75rem;
+  }
+}
 
 /* Out-of-service rooms: locked, industrial grey block that reads clearly as unsellable. */
 .room-card-oos {
@@ -1508,7 +1536,7 @@ textarea.input-required {
      Vertical scrolling only, for browsing room rows. */
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: calc(100vh - 320px);
+  max-height: calc(100vh - 280px);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: white;
@@ -1529,44 +1557,116 @@ textarea.input-required {
   border-bottom: none;
 }
 
+.cal-group {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 2px solid #cbd5e1;
+}
+
+.cal-group:last-child {
+  border-bottom: none;
+}
+
+.cal-group .cal-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-group .cal-row:last-child {
+  border-bottom: none;
+}
+
+.cal-group-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-type-span {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 6px;
+  background: #f8fafc;
+  border-right: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
 .cal-head-row {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 8;
   height: 58px;
   background: #f8fafc;
 }
 
-.cal-corner {
+.cal-corner-pair,
+.cal-label-pair {
+  display: flex;
+  flex-shrink: 0;
   position: sticky;
   left: 0;
-  z-index: 6;
+}
+
+.cal-head-row .cal-corner-pair {
+  z-index: 9;
+}
+
+.cal-label-pair {
+  z-index: 3;
+}
+
+.cal-corner {
   background: #f1f5f9;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  font-weight: 700;
-  font-size: 0.75rem;
+  padding: 0 8px;
+  font-weight: 600;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #475569;
+  color: #64748b;
   border-right: 1px solid var(--border);
-  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
-.cal-label {
+.cal-type-col {
+  font-weight: 500;
+  justify-content: center;
+  text-align: center;
+}
+
+.cal-room-col {
+  font-weight: 700;
+  color: #334155;
+  justify-content: center;
+}
+
+.cal-room-cell {
   position: sticky;
-  left: 0;
+  left: 78px;
   z-index: 3;
   background: white;
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  font-weight: 700;
-  font-size: 0.75rem;
-  color: #1e293b;
+  justify-content: center;
+  box-sizing: border-box;
   border-right: 1px solid var(--border);
   flex-shrink: 0;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #1e293b;
 }
 
 .cal-track {
@@ -1649,6 +1749,10 @@ textarea.input-required {
 .cal-bar-label {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 500;
+  min-width: 0;
 }
 
 .cal-legend {
