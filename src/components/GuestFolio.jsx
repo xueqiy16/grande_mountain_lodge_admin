@@ -4,6 +4,14 @@ import ConfirmDialog from './ConfirmDialog';
 import PrintableFolioModal from './PrintableFolioModal';
 import { STAFF_MEMBERS } from '../lib/constants';
 import { calculateAmountPaid, roundToCents } from '../lib/payments';
+import {
+  isValidStayRange,
+  toISODate,
+  fetchBlockingBookings,
+  roomHasOverlap,
+  bookingErrorMessage,
+  ROOM_NOT_AVAILABLE_FOR_DATES_MESSAGE
+} from '../lib/availability';
 
 // Payment method enum values (value) + human-readable labels for select inputs.
 const PAYMENT_METHOD_OPTIONS = [
@@ -397,6 +405,37 @@ const GuestFolio = ({
       }
 
       const guestId = detailBooking.guest_id || resolveGuest(detailBooking).guest_id;
+
+      if (!isValidStayRange(bookingDraft.check_in, bookingDraft.check_out)) {
+        alert('Check-out date must be after check-in.');
+        setIsSaving(false);
+        return;
+      }
+
+      const datesChanged =
+        toISODate(bookingDraft.check_in) !== toISODate(detailBooking.check_in)
+        || toISODate(bookingDraft.check_out) !== toISODate(detailBooking.check_out);
+
+      if (datesChanged && detailBooking.room_id) {
+        const { data: blocking, error: availErr } = await fetchBlockingBookings(
+          supabase,
+          bookingDraft.check_in,
+          bookingDraft.check_out
+        );
+        if (availErr) throw availErr;
+        if (roomHasOverlap(
+          detailBooking.room_id,
+          blocking || [],
+          bookingDraft.check_in,
+          bookingDraft.check_out,
+          detailBooking.booking_id
+        )) {
+          alert(ROOM_NOT_AVAILABLE_FOR_DATES_MESSAGE);
+          setIsSaving(false);
+          return;
+        }
+      }
+
       if (guestId) {
         const { error: gErr } = await supabase
           .from('guests')
@@ -440,7 +479,7 @@ const GuestFolio = ({
       await refreshData?.();
       setIsEditing(false);
     } catch (e) {
-      alert('Save failed: ' + e.message);
+      alert(bookingErrorMessage(e, 'Save failed'));
     } finally {
       setIsSaving(false);
     }

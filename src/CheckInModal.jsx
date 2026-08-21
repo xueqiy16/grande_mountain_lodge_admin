@@ -3,6 +3,18 @@ import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES, resolveRoomPreset } from './lib/constants';
 import { computeStayCost } from './lib/costing';
+import {
+  isValidStayRange,
+  pickAssignableRoom,
+  fetchBlockingBookings,
+  roomHasOverlap,
+  isOperationallyAssignable,
+  bookingErrorMessage,
+  localTodayISO,
+  NO_ROOMS_FOR_DATES_MESSAGE,
+  ROOM_NOT_AVAILABLE_FOR_DATES_MESSAGE,
+  ROOM_NOT_READY_FOR_CHECKIN_MESSAGE
+} from './lib/availability';
 // Blank slate used on close; the form is re-populated from the booking on open.
 const getBlankFormData = () => ({
   reservation_type: 'walk_in', // walk_in | phone | online (bookings.reservation_type)
@@ -18,7 +30,6 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
   // Prefer the live active-staff roster; fall back to the hard-coded list.
   const staff = staffList && staffList.length ? staffList : STAFF_MEMBERS;
   const [roomTypes, setRoomTypes] = useState([]);
-  const [allRooms, setAllRooms] = useState([]);
   const [selectedType, setSelectedType] = useState('');
   const [roomError, setRoomError] = useState(false);
   const [etransferError, setEtransferError] = useState(false);
@@ -38,16 +49,12 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
   // Load room categories + rooms (for optional room re-assignment at check-in).
   useEffect(() => {
     const fetchData = async () => {
-      const [typesRes, roomsRes] = await Promise.all([
-        supabase
-          .from('room_types')
-          .select('*')
-          .order('nightly_rate', { ascending: true })
-          .order('name', { ascending: true }),
-        supabase.from('rooms').select('*'),
-      ]);
+      const typesRes = await supabase
+        .from('room_types')
+        .select('*')
+        .order('nightly_rate', { ascending: true })
+        .order('name', { ascending: true });
       if (typesRes.data) setRoomTypes(typesRes.data);
-      if (roomsRes.data) setAllRooms(roomsRes.data);
     };
     if (isOpen) {
       fetchData();
@@ -119,9 +126,6 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
     });
   }, [isOpen, selectedType, roomTypes]);
 
-  const isRoomAvailable = (room) =>
-    (room?.status ?? '').toString().toLowerCase().trim() === 'available';
-
   // Baseline mirrors the prefill effect, so a freshly opened form is never "dirty".
   const baselineGuest = booking?.guests || {};
   const baselineRoomType = roomTypes.find(
@@ -167,20 +171,9 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
     const sanitizedValue = String(selectedType).trim();
     const originalTypeId = String(booking.rooms?.room_type_id ?? '').trim();
 
-    // Keep the existing room unless staff picked a different category, in which
-    // case reassign to an available room of that category.
-    let targetRoomId = booking.room_id;
-    let targetRoomNumber = booking.rooms?.room_number;
-    if (sanitizedValue !== originalTypeId) {
-      const targetRoom = allRooms.find(
-        r => String(r.room_type_id).trim() === sanitizedValue && isRoomAvailable(r)
-      );
-      if (!targetRoom) {
-        setRoomError(true);
-        return;
-      }
-      targetRoomId = targetRoom.room_id;
-      targetRoomNumber = targetRoom.room_number;
+    if (!isValidStayRange(formData.check_in, formData.check_out)) {
+      alert('Check-out date must be after check-in.');
+      return;
     }
 
     // Strict validation: E-transfer requires a reference number.
@@ -205,6 +198,60 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
 
     if (isProcessing) return;
     setIsProcessing(true);
+
+    const today = localTodayISO();
+    const [roomsRes, bookingsRes] = await Promise.all([
+      supabase.from('rooms').select('*'),
+      fetchBlockingBookings(supabase, formData.check_in, formData.check_out)
+    ]);
+    if (roomsRes.error || bookingsRes.error) {
+      setIsProcessing(false);
+      return alert('Could not verify room availability. Please try again.');
+    }
+    const liveRooms = roomsRes.data || [];
+    const liveBookings = bookingsRes.data || [];
+
+    let targetRoomId = booking.room_id;
+    let targetRoomNumber = booking.rooms?.room_number;
+    const typeChanged = sanitizedValue !== originalTypeId;
+
+    if (typeChanged) {
+      const targetRoom = pickAssignableRoom({
+        rooms: liveRooms,
+        roomTypeId: sanitizedValue,
+        checkIn: formData.check_in,
+        checkOut: formData.check_out,
+        bookings: liveBookings,
+        today,
+        excludeBookingId: booking.booking_id
+      });
+      if (!targetRoom) {
+        setRoomError(true);
+        setIsProcessing(false);
+        return;
+      }
+      targetRoomId = targetRoom.room_id;
+      targetRoomNumber = targetRoom.room_number;
+    } else {
+      const currentRoom = liveRooms.find(
+        (r) => String(r.room_id) === String(booking.room_id)
+      );
+      if (!isOperationallyAssignable(currentRoom, formData.check_in, today)) {
+        setIsProcessing(false);
+        return alert(ROOM_NOT_READY_FOR_CHECKIN_MESSAGE);
+      }
+      if (roomHasOverlap(
+        booking.room_id,
+        liveBookings,
+        formData.check_in,
+        formData.check_out,
+        booking.booking_id
+      )) {
+        setIsProcessing(false);
+        return alert(ROOM_NOT_AVAILABLE_FOR_DATES_MESSAGE);
+      }
+    }
+    setRoomError(false);
 
     // Pricing: nights * nightly rate + taxes. Uses the editable Room Price entered
     // by staff. total_price stores the tax-inclusive grand total (base + GST +
@@ -276,7 +323,8 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
         console.warn('Booking update affected 0 rows — check RLS policy / booking_id:', booking.booking_id);
       }
 
-      // Room status -> 'occupied' is handled by the DB trigger tr_update_room_status.
+      // Room operational status transitions are handled by database
+      // room-status triggers.
 
       // 3. Record the collected payment as a transaction whenever money changed hands.
       // All card/payment details live here, not on bookings.
@@ -308,7 +356,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
       });
       onClose();
     } catch (error) {
-      alert(`Check-in failed: ${error.message}`);
+      alert(bookingErrorMessage(error, 'Check-in failed'));
       setIsProcessing(false);
     }
   };
@@ -378,7 +426,7 @@ const CheckInModal = ({ isOpen, onClose, booking, onCheckInComplete, staffList }
               </select>
               {roomError && (
                 <p id="room-category-error" className="field-error-text">
-                  No rooms available for this room category.
+                  {NO_ROOMS_FOR_DATES_MESSAGE}
                 </p>
               )}
             </div>

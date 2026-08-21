@@ -3,6 +3,13 @@ import { supabase } from './lib/supabase';
 import ConfirmDialog from './components/ConfirmDialog';
 import { STAFF_MEMBERS, TRANSACTION_TYPES, resolveRoomPreset } from './lib/constants';
 import { computeStayCost } from './lib/costing';
+import {
+  isValidStayRange,
+  pickAssignableRoom,
+  fetchBlockingBookings,
+  bookingErrorMessage,
+  NO_ROOMS_FOR_DATES_MESSAGE
+} from './lib/availability';
 // Local calendar date as YYYY-MM-DD. Built from the local getFullYear/Month/Date
 // (NOT toISOString(), which is UTC and can jump a day across the midnight boundary).
 const getLocalTodayString = () => {
@@ -31,11 +38,11 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
   // Prefer the live active-staff roster; fall back to the hard-coded list.
   const staff = staffList && staffList.length ? staffList : STAFF_MEMBERS;
   const [roomTypes, setRoomTypes] = useState([]);
-  const [allRooms, setAllRooms] = useState([]);
   const [selectedType, setSelectedType] = useState('');
   const [roomError, setRoomError] = useState(false);
   const [etransferError, setEtransferError] = useState(false);
   const [checkInError, setCheckInError] = useState(false);
+  const [checkOutError, setCheckOutError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(getInitialFormData());
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -52,6 +59,7 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
     setRoomError(false);
     setEtransferError(false);
     setCheckInError(false);
+    setCheckOutError(false);
     setIsSubmitting(false);
   };
 
@@ -86,29 +94,17 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [typesRes, roomsRes] = await Promise.all([
-        // Price-ascending; break ties on identical rates alphabetically by name.
-        supabase
-          .from('room_types')
-          .select('*')
-          .order('nightly_rate', { ascending: true })
-          .order('name', { ascending: true }),
-        supabase.from('rooms').select('*'),
-      ]);
+      const typesRes = await supabase
+        .from('room_types')
+        .select('*')
+        .order('nightly_rate', { ascending: true })
+        .order('name', { ascending: true });
       if (typesRes.data) setRoomTypes(typesRes.data);
-      if (roomsRes.data) setAllRooms(roomsRes.data);
     };
     if (isOpen) {
       fetchData();
-      setRoomError(false);
-      setEtransferError(false);
-      setCheckInError(false);
     }
   }, [isOpen]);
-
-  // Normalize any status string ("Available", " available ", etc.) for comparison.
-  const isRoomAvailable = (room) =>
-    (room?.status ?? '').toString().toLowerCase().trim() === 'available';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -122,17 +118,16 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
       return;
     }
 
+    if (!isValidStayRange(formData.check_in, formData.check_out)) {
+      setCheckOutError(true);
+      return;
+    }
+    setCheckOutError(false);
+
     // The <select> value is always a string. Trim it defensively in case any
     // label text or whitespace leaks into the value.
     const sanitizedValue = String(selectedType).trim();
-
-    // Match on the relational id, normalized to strings on BOTH sides so a numeric
-    // room_type_id in Supabase still matches the string coming from the dropdown.
-    // Availability is read straight from the DB (rooms.status), case/space-insensitive.
-    const targetRoom = allRooms.find(
-      r => String(r.room_type_id).trim() === sanitizedValue && isRoomAvailable(r)
-    );
-    if (!targetRoom) {
+    if (!sanitizedValue) {
       setRoomError(true);
       return;
     }
@@ -167,6 +162,33 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
     // Guard against duplicate transaction/booking creation on double-submit.
     if (isSubmitting) return;
     setIsSubmitting(true);
+
+    // Live rooms + blocking bookings at submit time. The list loaded when the
+    // modal opened is never the final authority. PostgreSQL still enforces overlap.
+    const [roomsRes, bookingsRes] = await Promise.all([
+      supabase.from('rooms').select('*'),
+      fetchBlockingBookings(supabase, formData.check_in, formData.check_out)
+    ]);
+    if (roomsRes.error || bookingsRes.error) {
+      setIsSubmitting(false);
+      return alert('Could not verify room availability. Please try again.');
+    }
+    const liveRooms = roomsRes.data || [];
+
+    const targetRoom = pickAssignableRoom({
+      rooms: liveRooms,
+      roomTypeId: sanitizedValue,
+      checkIn: formData.check_in,
+      checkOut: formData.check_out,
+      bookings: bookingsRes.data || [],
+      today
+    });
+    if (!targetRoom) {
+      setRoomError(true);
+      setIsSubmitting(false);
+      return;
+    }
+    setRoomError(false);
 
     // Walk-Ins arrive now (checked in → room becomes occupied via DB trigger).
     // Phone/Online are future reservations (confirmed → room stays available until
@@ -246,15 +268,13 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
 
     if (bookingError) {
       setIsSubmitting(false);
-      return alert("Booking Error: " + bookingError.message);
+      return alert(bookingErrorMessage(bookingError, 'Booking Error'));
     }
 
     const bookingId = bookingData.booking_id;
 
-    // Room status transition (available -> occupied) is owned SOLELY by the DB
-    // trigger tr_update_room_status, which reads NEW.booking_status ('checked_in')
-    // on this insert. No client-side rooms.status write happens here, so a failed
-    // booking insert above leaves the room 'available'. "reserved" is never used.
+    // Room operational status transitions are handled by database
+    // room-status triggers. No client-side rooms.status write happens here.
 
     // 3. Record the collected payment as a transaction whenever money changed hands
     // (full, partial, or deposit). All card/payment details live here, not on bookings.
@@ -364,7 +384,7 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
               </select>
               {roomError && (
                 <p id="room-category-error" className="field-error-text">
-                  No rooms available for this room category.
+                  {NO_ROOMS_FOR_DATES_MESSAGE}
                 </p>
               )}
             </div>
@@ -426,6 +446,7 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
                   const today = getLocalTodayString();
                   // Walk-in: must be exactly today. Phone/Online: no past dates.
                   setCheckInError(isWalkIn ? value !== today : value < today);
+                  setCheckOutError(Boolean(formData.check_out && value && formData.check_out <= value));
                   setFormData({ ...formData, check_in: value });
                 }}
               />
@@ -435,7 +456,25 @@ const WalkInModal = ({ isOpen, onClose, onBookingComplete, staffList }) => {
                 </p>
               )}
             </div>
-            <div className="form-group"><label>Check Out *</label><input type="date" required onChange={(e) => setFormData({...formData, check_out: e.target.value})} /></div>
+            <div className="form-group">
+              <label>Check Out *</label>
+              <input
+                type="date"
+                required
+                value={formData.check_out}
+                min={formData.check_in || undefined}
+                className={checkOutError ? 'input-error' : ''}
+                aria-invalid={checkOutError}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setCheckOutError(Boolean(formData.check_in && value && value <= formData.check_in));
+                  setFormData({ ...formData, check_out: value });
+                }}
+              />
+              {checkOutError && (
+                <p className="field-error-text">Check-out date must be after check-in.</p>
+              )}
+            </div>
             <div className="form-group"><label>Phone</label><input type="text" required onChange={(e) => setFormData({...formData, phone: e.target.value})} /></div>
           </div>
 
