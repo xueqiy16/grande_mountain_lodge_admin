@@ -38,7 +38,7 @@ const fmtDate = (iso) => {
 };
 
 // Canonical staff display name: First [Middle ]Last (e.g. "Jadeyn JF Fulop-Gueutal").
-export const staffDisplayName = (s) => {
+const staffDisplayName = (s) => {
   if (!s) return '';
   const mid = s.middle_name ? `${s.middle_name} ` : '';
   return `${s.first_name || ''} ${mid}${s.last_name || ''}`.replace(/\s+/g, ' ').trim();

@@ -233,7 +233,7 @@ function App() {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return null;
       return date.toISOString().split('T')[0];
-    } catch (e) {
+    } catch {
       return null;
     }
   };
@@ -295,7 +295,7 @@ function App() {
       await supabase.from('bookings').update({ booking_status: 'checked_out' }).eq('booking_id', bookingToProcess.booking_id);
       setMessage(`Check-out complete.`);
       setSelectedRoom(null); fetchDashboardData(); 
-    } catch (error) { alert("Check-out failed."); }
+    } catch { alert("Check-out failed."); }
   };
 
   const handleCancelReservation = async (bookingId) => {

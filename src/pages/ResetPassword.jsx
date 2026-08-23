@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 // Password policy: at least 8 characters, and at least one number or special char.
 const validatePassword = (pw) => {
   if (pw.length < 8) return 'Password must be at least 8 characters.';
-  if (!/[0-9!@#$%^&*(),.?":{}|<>_\-\[\]\\/;'`~+=]/.test(pw)) {
+  if (!/[0-9!@#$%^&*(),.?":{}|<>_\-[\]\\/;'`~+=]/.test(pw)) {
     return 'Password must include at least one number or special character.';
   }
   return '';

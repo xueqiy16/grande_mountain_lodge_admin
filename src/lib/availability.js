@@ -1,9 +1,12 @@
 // Calendar occupancy for physical rooms. Frontend pre-check only —
 // PostgreSQL exclusion constraint (SQLSTATE 23P01) is the final invariant.
+// pending_payment / confirmed / checked_in hold inventory; cancelled / no_show /
+// checked_out do not.
 //
 // Half-open stay [check_in, check_out): adjacent dates do not overlap.
 
-export const BLOCKING_BOOKING_STATUSES = ['confirmed', 'checked_in'];
+// Inventory/calendar blockers. Operational rooms.status is separate.
+export const BLOCKING_BOOKING_STATUSES = ['pending_payment', 'confirmed', 'checked_in'];
 
 export const NO_ROOMS_FOR_DATES_MESSAGE =
   'No rooms are available for the selected dates.';
@@ -47,7 +50,7 @@ export const datesOverlap = (existingCheckIn, existingCheckOut, requestedCheckIn
 };
 
 export const isBlockingBookingStatus = (status) =>
-  status === 'confirmed' || status === 'checked_in';
+  BLOCKING_BOOKING_STATUSES.includes(status);
 
 export const bookingBlocksRoom = (booking, requestedCheckIn, requestedCheckOut, excludeBookingId) => {
   if (!booking) return false;
